@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { authAPI } from "../../lib/api/auth";
 import { getAccessToken, getRefreshToken, setTokens } from "../../lib/api/client";
+import { useToast } from "../../lib/hooks/useToast";
 import { useAppStore } from "../../store/useAppStore";
 
 type Mode = "login" | "signup";
@@ -14,6 +15,7 @@ function LoginPageInner() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") ?? "/";
   const login = useAppStore((state) => state.login);
+  const { success, error: showError, info } = useToast();
 
   const [mode, setMode] = useState<Mode>("login");
   const [loginMethod, setLoginMethod] = useState<LoginMethod>(null);
@@ -83,7 +85,7 @@ function LoginPageInner() {
         setErrorMessage("");
         setMode("login");
         setLoginMethod("email");
-        alert("Account created successfully! Please login with your email and password.");
+        success("Account created successfully! Please login with your email and password.");
       } else {
         setErrorMessage(response.message || "Failed to create account.");
       }
@@ -119,12 +121,15 @@ function LoginPageInner() {
              _id: response.user.id
            };
            login(userProfile);
-           router.replace(redirect);
+           success("Login successful! Welcome back.");
+           setTimeout(() => {
+             router.replace(redirect);
+           }, 500);
         } else if (response.tempToken) {
           setLoginError("");
           setTempToken(response.tempToken);
           setOtpSent(true);
-          alert(`OTP has been sent to ${email}. Please check your email.`);
+          info(`OTP has been sent to ${email}. Please check your email.`);
           setLoading(false);
         } else {
           setLoginError(response.message || "Login failed.");
@@ -161,7 +166,10 @@ function LoginPageInner() {
       const response = await authAPI.verifyOtp({ otp, tempToken });
        if (response.success && response.user) {
          login(response.user);
-         router.replace(redirect);
+         success("Login successful! Welcome back.");
+         setTimeout(() => {
+           router.replace(redirect);
+         }, 500);
       } else {
         setOtpError(response.message || "Failed to verify OTP.");
         setLoading(false);
@@ -448,7 +456,7 @@ function LoginPageInner() {
   }
 
   const handleGoogleLogin = () => {
-    alert("Google login will be implemented with OAuth flow.");
+    info("Google login will be implemented with OAuth flow.");
   };
 
   return (

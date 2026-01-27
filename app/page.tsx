@@ -87,7 +87,7 @@ export default function HomePage() {
 
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-5xl px-4 pb-20 pt-10 sm:px-6">
+      <div className="mx-auto max-w-5xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <section className="mb-4">
           <div className="flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="hidden text-3xl font-bold text-white sm:block sm:text-4xl">
@@ -114,11 +114,16 @@ export default function HomePage() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={
-                      featured[activeFeaturedIndex].image ??
+                      featured[activeFeaturedIndex].image ||
                       "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200"
                     }
                     alt={featured[activeFeaturedIndex].title}
                     className="h-72 w-full object-cover sm:h-80"
+                    onError={(e) => {
+                      // Fallback to default image if error
+                      const target = e.target as HTMLImageElement;
+                      target.src = "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
+                    }}
                   />
 
                   {/* Date badge */}

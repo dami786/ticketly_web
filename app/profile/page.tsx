@@ -125,7 +125,7 @@ export default function ProfilePage() {
 
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-4xl px-4 pb-20 pt-8 sm:px-6">
+      <div className="mx-auto max-w-4xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <div className="mb-4 flex items-center justify-end">
           <button
             type="button"

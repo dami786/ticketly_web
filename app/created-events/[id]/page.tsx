@@ -204,7 +204,7 @@ export default function CreatedEventDetailsPage() {
 
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-4xl px-4 pb-20 pt-8 sm:px-6">
+      <div className="mx-auto max-w-4xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <div className="mb-4 flex items-center justify-between">
           <button
             type="button"
@@ -225,13 +225,22 @@ export default function CreatedEventDetailsPage() {
 
         <div className="overflow-hidden rounded-2xl bg-surface shadow-xl">
           <div className="h-64 w-full bg-[#111827]">
-            {event.image && (
+            {event.image ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={event.image}
                 alt={event.title}
                 className="h-full w-full object-cover"
+                onError={(e) => {
+                  // Hide image on error, show background
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = "none";
+                }}
               />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <span className="text-sm text-mutedLight">No image</span>
+              </div>
             )}
           </div>
 

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authAPI } from "../../lib/api/auth";
+import { useToast } from "../../lib/hooks/useToast";
 import { useAppStore } from "../../store/useAppStore";
 
 type Tab = "profile" | "security";
@@ -12,6 +13,7 @@ export default function SettingsPage() {
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
   const logout = useAppStore((state) => state.logout);
+  const { success, info, warning } = useToast();
 
   const [activeTab, setActiveTab] = useState<Tab>("profile");
 
@@ -35,7 +37,7 @@ export default function SettingsPage() {
       return;
     }
     if (name === user?.fullName) {
-      alert("No changes made.");
+      info("No changes made.");
       return;
     }
     setLoadingName(true);
@@ -44,7 +46,7 @@ export default function SettingsPage() {
       const response = await authAPI.updateUser({ name: name.trim() });
       if (response.success) {
         if (response.user) setUser(response.user);
-        alert("Name updated successfully.");
+        success("Name updated successfully.");
       } else {
         setNameError(response.message || "Failed to update name.");
       }
@@ -64,7 +66,7 @@ export default function SettingsPage() {
       return;
     }
     if (email === user?.email) {
-      alert("No changes made.");
+      info("No changes made.");
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -78,7 +80,7 @@ export default function SettingsPage() {
       const response = await authAPI.updateUser({ email: email.trim() });
       if (response.success) {
         if (response.user) setUser(response.user);
-        alert("Email updated successfully.");
+        success("Email updated successfully.");
       } else {
         setEmailError(response.message || "Failed to update email.");
       }
@@ -110,7 +112,7 @@ export default function SettingsPage() {
     try {
       const response = await authAPI.updateUser({ password: newPassword });
       if (response.success) {
-        alert("Password updated successfully.");
+        success("Password updated successfully.");
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
@@ -157,7 +159,7 @@ export default function SettingsPage() {
 
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-3xl px-4 pb-20 pt-8 sm:px-6">
+      <div className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <div className="mb-6 flex items-center justify-between">
           <button
             type="button"

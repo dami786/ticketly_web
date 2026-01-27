@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { authAPI } from "../../../lib/api/auth";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { ticketsAPI } from "../../../lib/api/tickets";
+import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
 
 export default function EventDetailsPage() {
@@ -21,6 +22,7 @@ export default function EventDetailsPage() {
   const [userTickets, setUserTickets] = useState<any[]>([]);
   const [phoneInput, setPhoneInput] = useState("");
   const [showPhonePrompt, setShowPhonePrompt] = useState(false);
+  const { success, error: showError, warning } = useToast();
 
   const eventId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
@@ -118,7 +120,7 @@ export default function EventDetailsPage() {
         } catch {
           // ignore
         }
-        alert("Ticket created successfully! You can view it below.");
+        success("Ticket created successfully! You can view it below.");
         try {
           const ticketsResponse = await ticketsAPI.getMyTickets();
           if (ticketsResponse.success && ticketsResponse.tickets) {
@@ -137,7 +139,7 @@ export default function EventDetailsPage() {
         }
       }
     } catch (error: any) {
-      alert(
+      showError(
         error?.response?.data?.message ??
           error?.message ??
           "Failed to create ticket."
@@ -177,11 +179,9 @@ export default function EventDetailsPage() {
     );
   }
 
-  const isRegistered = userTickets.length > 0;
-
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-3xl px-4 pb-20 pt-8 sm:px-6">
+      <div className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <button
           type="button"
           onClick={() => router.back()}
@@ -192,14 +192,22 @@ export default function EventDetailsPage() {
 
         <div className="overflow-hidden rounded-2xl bg-surface shadow-xl">
           <div className="h-64 w-full bg-[#111827]">
-            {/* Simple cover; could be upgraded to Next Image if needed */}
-            {event.image && (
+            {event.image ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={event.image}
                 alt={event.title}
                 className="h-full w-full object-cover"
+                onError={(e) => {
+                  // Hide image on error, show background
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = "none";
+                }}
               />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <span className="text-sm text-mutedLight">No image</span>
+              </div>
             )}
           </div>
           <div className="space-y-4 p-5">
@@ -252,17 +260,9 @@ export default function EventDetailsPage() {
               type="button"
               disabled={creatingTicket}
               onClick={handleRegister}
-              className={`mt-2 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-white ${
-                isRegistered
-                  ? "bg-success hover:bg-success/90"
-                  : "bg-accent hover:bg-accent/90"
-              } disabled:opacity-60`}
+              className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
             >
-              {creatingTicket
-                ? "Processing…"
-                : isRegistered
-                ? "View tickets below"
-                : "Register now"}
+              {creatingTicket ? "Processing…" : "Register now"}
             </button>
           </div>
 
@@ -275,26 +275,58 @@ export default function EventDetailsPage() {
 
           {user && userTickets.length > 0 && (
             <div className="border-t border-[#1F2937] p-5">
-              <h2 className="mb-3 text-lg font-bold text-white">
+              <h2 className="mb-4 text-lg font-bold text-white">
                 Your tickets ({userTickets.length})
               </h2>
-              <div className="space-y-3">
-                {userTickets.map((ticket: any) => (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {userTickets.map((ticket: any, index: number) => (
                   <button
                     key={ticket.id}
                     type="button"
                     onClick={() => router.push(`/tickets/${ticket.id}`)}
-                    className="flex w-full items-center justify-between rounded-xl border border-[#374151] bg-[#111827] px-4 py-3 text-left text-sm text-[#D1D5DB] hover:border-accent"
+                    className="group relative overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-br from-accent/10 via-accent/5 to-transparent p-4 text-left transition-all hover:border-accent hover:shadow-[0_0_20px_rgba(147,51,234,0.3)]"
                   >
-                    <div>
-                      <div className="text-xs text-mutedLight">
-                        Ticket #{ticket.id.slice(-8).toUpperCase()}
+                    {/* Decorative corner accent */}
+                    <div className="absolute top-0 right-0 h-16 w-16 rounded-bl-full bg-accent/10" />
+                    
+                    {/* Ticket content */}
+                    <div className="relative">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="rounded-lg bg-accent/20 px-2.5 py-1">
+                          <span className="text-xs font-bold text-accent">
+                            #{index + 1}
+                          </span>
+                        </div>
+                        <div className="text-xs font-semibold text-success">
+                          ✓ Confirmed
+                        </div>
                       </div>
-                      <div className="text-xs">
-                        {ticket.email} · {ticket.phone}
+                      
+                      <div className="mb-2">
+                        <div className="text-xs font-semibold text-mutedLight mb-1">
+                          Ticket ID
+                        </div>
+                        <div className="text-sm font-bold text-white">
+                          {ticket.id.slice(-8).toUpperCase()}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-xs text-[#D1D5DB]">
+                          <span className="text-mutedLight">Email:</span>
+                          <span className="truncate">{ticket.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-[#D1D5DB]">
+                          <span className="text-mutedLight">Phone:</span>
+                          <span>{ticket.phone}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-accent opacity-0 transition-opacity group-hover:opacity-100">
+                        <span>View details</span>
+                        <span>→</span>
                       </div>
                     </div>
-                    <div className="text-xs text-mutedLight">View</div>
                   </button>
                 ))}
               </div>
@@ -333,7 +365,7 @@ export default function EventDetailsPage() {
                   disabled={creatingTicket}
                   onClick={() => {
                     if (!phoneInput.trim() || phoneInput.trim().length < 10) {
-                      alert("Please enter a valid phone number (at least 10 digits).");
+                      warning("Please enter a valid phone number (at least 10 digits).");
                       return;
                     }
                     void createTicket(phoneInput);

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { FiCompass, FiPlusCircle, FiUser } from "react-icons/fi";
+import { FiCompass, FiGrid, FiHome, FiPlusCircle, FiUser } from "react-icons/fi";
+import ToastContainer from "../components/Toast";
 import "./globals.css";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     {
       href: "/",
       label: "Discover",
-      icon: FiCompass
+      icon: FiHome
     },
     {
       href: "/explore",
@@ -36,11 +37,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className="h-full">
       <body className="min-h-screen bg-background text-white antialiased">
         <div className="flex min-h-screen flex-col">
-          <header className="border-b border-[#1F1F1F] bg-[#050505]/80 backdrop-blur">
+          <header className="sticky top-0 z-30 border-b border-[#1F1F1F] bg-[#050505]/95 backdrop-blur-md">
             <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-              <div className="flex items-center text-xl font-bold tracking-tight">
+              <Link href="/" className="flex items-center text-xl font-bold tracking-tight text-white hover:text-accent transition-colors">
                 <span>ticketly</span>
-              </div>
+              </Link>
               {/* Desktop navigation (hidden on mobile to mimic mobile app layout) */}
               <nav className="hidden items-center gap-2 text-sm text-mutedLight sm:flex">
                 {navItems.map((item) => {
@@ -71,6 +72,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </header>
           <main className="flex-1">{children}</main>
 
+          {/* Toast Container */}
+          <ToastContainer />
+
           {/* Mobile bottom tab bar (icons only) */}
           <nav className="sticky bottom-0 z-20 flex h-16 items-center justify-around border-t border-[#1F1F1F] bg-[#050505] px-6 text-mutedLight sm:hidden">
             <Link
@@ -81,7 +85,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   : "text-mutedLight"
               }`}
             >
-              <FiCompass size={22} />
+              <FiHome size={22} />
             </Link>
 
             <Link

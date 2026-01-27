@@ -3,12 +3,14 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, type ChangeEvent } from "react";
 import { ticketsAPI, type Ticket } from "../../../lib/api/tickets";
+import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
 
 export default function TicketPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const user = useAppStore((state) => state.user);
+  const { info } = useToast();
 
   type PaymentMethod = "bank" | "easypaisa" | "jazzcash" | "other";
 
@@ -142,7 +144,7 @@ export default function TicketPage() {
 
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-xl px-4 pb-20 pt-8 sm:px-6">
+      <div className="mx-auto max-w-xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <button
           type="button"
           onClick={() => router.back()}
@@ -347,7 +349,7 @@ export default function TicketPage() {
                     setIsSubmittingProof(true);
                     // TODO: Wire up to backend endpoint when available
                     // For now just show a friendly message.
-                    alert(
+                    info(
                       "Your payment screenshot will be submitted once this feature is connected to the server."
                     );
                     setTimeout(() => setIsSubmittingProof(false), 400);
@@ -375,7 +377,7 @@ export default function TicketPage() {
             <button
               type="button"
               onClick={() =>
-                alert("Ticket download feature will be available soon.")
+                info("Ticket download feature will be available soon.")
               }
               className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90"
             >
@@ -384,7 +386,7 @@ export default function TicketPage() {
             <button
               type="button"
               onClick={() =>
-                alert("Ticket sharing feature will be available soon.")
+                info("Ticket sharing feature will be available soon.")
               }
               className="flex-1 rounded-xl border border-border bg-[#111827] px-4 py-2.5 text-sm font-semibold text-white hover:border-accent"
             >

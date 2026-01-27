@@ -22,16 +22,26 @@ export function EventCard({ event, href }: EventCardProps) {
       className="mb-4 w-full rounded-2xl bg-gradient-to-br from-white/5 via-surface to-black/80 text-left shadow-[0_14px_35px_rgba(0,0,0,0.65)] ring-1 ring-white/5 backdrop-blur-sm transition hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(0,0,0,0.8)]"
     >
       <div className="relative h-40 w-full overflow-hidden rounded-t-2xl sm:h-56">
-        <Image
-          src={
-            event.image ??
-            "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800"
-          }
-          alt={event.title}
-          fill
-          sizes="(max-width: 640px) 100vw, 50vw"
-          className="object-cover"
-        />
+        {event.image && event.image.startsWith("data:") ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={event.image}
+            alt={event.title}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <Image
+            src={
+              event.image ??
+              "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800"
+            }
+            alt={event.title}
+            fill
+            sizes="(max-width: 640px) 100vw, 50vw"
+            className="object-cover"
+            unoptimized={event.image?.startsWith("data:")}
+          />
+        )}
         {/* subtle top glass overlay */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/50 via-black/20 to-transparent" />
         <div className="absolute right-2 top-2 min-w-[50px] rounded-lg bg-danger px-2.5 py-1.5 text-center">

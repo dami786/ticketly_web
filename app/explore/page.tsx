@@ -42,7 +42,7 @@ export default function ExplorePage() {
 
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-5xl px-4 pb-20 pt-10 sm:px-6">
+      <div className="mx-auto max-w-5xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <header className="mb-6">
           <h1 className="mb-3 text-3xl font-bold text-white">
             Explore events
