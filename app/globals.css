@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
+}
+
+a {
+  text-decoration: none;
+}
+
+/* Ensure all form field text is black */
+input,
+textarea,
+select {
+  color: #000000;
+}
+
+
