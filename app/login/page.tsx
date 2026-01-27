@@ -1,7 +1,7 @@
 "use client";
- 
- import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { authAPI } from "../../lib/api/auth";
 import { getAccessToken, getRefreshToken, setTokens } from "../../lib/api/client";
 import { useAppStore } from "../../store/useAppStore";
@@ -9,7 +9,7 @@ import { useAppStore } from "../../store/useAppStore";
 type Mode = "login" | "signup";
 type LoginMethod = "google" | "email" | null;
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") ?? "/";
@@ -62,7 +62,7 @@ export default function LoginPage() {
       }
     };
     void checkAuth();
-  }, [login, router]);
+  }, [login, router, redirect]);
 
   const handleSignup = async () => {
     setErrorMessage("");
@@ -500,6 +500,14 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageInner />
+    </Suspense>
   );
 }
 
