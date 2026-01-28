@@ -3,6 +3,22 @@ import type { UserProfile } from "../lib/api/auth";
 import { clearTokens } from "../lib/api/client";
 import type { Event } from "../lib/api/events";
 
+const isBrowser = typeof window !== "undefined";
+const USER_STORAGE_KEY = "ticketly_user";
+
+const persistUser = (user: UserProfile | null) => {
+  if (!isBrowser) return;
+  try {
+    if (!user) {
+      window.localStorage.removeItem(USER_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    }
+  } catch {
+    // ignore
+  }
+};
+
 interface AppState {
   user: UserProfile | null;
   events: Event[];
@@ -22,7 +38,10 @@ export const useAppStore = create<AppState>((set) => ({
   events: [],
   isAuthenticated: false,
 
-  setUser: (user) => set({ user }),
+  setUser: (user) => {
+    persistUser(user);
+    set({ user, isAuthenticated: !!user });
+  },
 
   setEvents: (events) => set({ events }),
 
@@ -71,11 +90,15 @@ export const useAppStore = create<AppState>((set) => ({
       events: [event, ...state.events]
     })),
 
-  login: (user) => set({ user, isAuthenticated: true }),
+  login: (user) => {
+    persistUser(user);
+    set({ user, isAuthenticated: true });
+  },
 
   logout: async () => {
     try {
       clearTokens();
+      persistUser(null);
       set({ user: null, isAuthenticated: false, events: [] });
     } catch (error) {
       console.error("Logout error:", error);

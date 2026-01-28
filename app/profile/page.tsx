@@ -6,6 +6,7 @@ import { FiCamera, FiMenu } from "react-icons/fi";
 import { EventCard } from "../../components/EventCard";
 import { authAPI } from "../../lib/api/auth";
 import { eventsAPI } from "../../lib/api/events";
+import { getAccessToken } from "../../lib/api/client";
 import { useToast } from "../../lib/hooks/useToast";
 import { useAppStore } from "../../store/useAppStore";
 
@@ -14,6 +15,8 @@ type TabKey = "created" | "joined" | "liked";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   "https://ticketlybackend-production.up.railway.app/api";
+
+const USER_STORAGE_KEY = "ticketly_user";
 
 const resolveProfileImageUrl = (
   rawImage: string | null | undefined
@@ -62,6 +65,7 @@ export default function ProfilePage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [authHydrating, setAuthHydrating] = useState(true);
 
   const loadProfile = async (silent = false) => {
     try {
@@ -189,6 +193,28 @@ export default function ProfilePage() {
     void loadProfile();
   }, [user?._id, user?.profileImage, (user as any)?.profileImageUrl]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // If user is already in store, we're done
+    if (user) {
+      setAuthHydrating(false);
+      return;
+    }
+
+    const token = getAccessToken();
+    const storedUser = window.localStorage.getItem(USER_STORAGE_KEY);
+
+    // If we have neither token nor stored user, there is no active session
+    if (!token && !storedUser) {
+      setAuthHydrating(false);
+      return;
+    }
+
+    // We have some session info (token or stored user), so keep hydrating
+    // until AuthInitializer loads the user or tokens are cleared.
+  }, [user]);
+
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -293,6 +319,17 @@ export default function ProfilePage() {
         return [];
     }
   }, [activeTab, createdEvents, joinedEvents, likedEvents]);
+
+  if (!user && authHydrating) {
+    return (
+      <div className="bg-background">
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl flex-col items-center justify-center px-4 text-center sm:px-6">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent mb-3" />
+          <p className="text-sm text-mutedLight">Restoring your session…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

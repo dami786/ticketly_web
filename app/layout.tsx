@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { FiCompass, FiGrid, FiHome, FiPlusCircle, FiUser } from "react-icons/fi";
+import { FiCompass, FiHome, FiPlusCircle, FiUser } from "react-icons/fi";
+import AuthInitializer from "../components/AuthInitializer";
 import ToastContainer from "../components/Toast";
 import "./globals.css";
 
@@ -37,6 +38,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className="h-full">
       <body className="min-h-screen bg-background text-white antialiased">
         <div className="flex min-h-screen flex-col">
+          {/* Ensure auth state persists across refresh by hydrating from stored tokens */}
+          <AuthInitializer />
           <header className="sticky top-0 z-30 border-b border-[#1F1F1F] bg-[#050505]/95 backdrop-blur-md">
             <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
               <Link href="/" className="flex items-center text-xl font-bold tracking-tight text-white hover:text-accent transition-colors">
