@@ -6,6 +6,7 @@ import { FiHeart } from "react-icons/fi";
 import { authAPI } from "../../../lib/api/auth";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { ticketsAPI } from "../../../lib/api/tickets";
+import { getEventImageUrl } from "../../../lib/utils/images";
 import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
 
@@ -271,23 +272,17 @@ export default function EventDetailsPage() {
 
         <div className="overflow-hidden rounded-2xl bg-surface shadow-xl">
           <div className="h-64 w-full bg-[#111827]">
-            {event.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={event.image}
-                alt={event.title}
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  // Hide image on error, show background
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <span className="text-sm text-mutedLight">No image</span>
-              </div>
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={getEventImageUrl(event as any)}
+              alt={event.title}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                // Hide image on error, show background text
+                const target = e.target as HTMLImageElement;
+                target.style.display = "none";
+              }}
+            />
           </div>
           <div className="space-y-4 p-5">
             <div className="flex items-start justify-between gap-3">

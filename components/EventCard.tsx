@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FiMapPin } from "react-icons/fi";
 import type { Event } from "../lib/api/events";
+import { getEventImageUrl } from "../lib/utils/images";
 
 interface EventCardProps {
   event: Event & { id?: string };
@@ -16,39 +17,7 @@ export function EventCard({ event, href }: EventCardProps) {
   const day = date.getDate();
 
   // Get image source - handle base64, URLs, and missing images
-  const getImageSrc = () => {
-    // Check multiple possible field names for image
-    const img = (event as any).image || 
-                (event as any).imageUrl || 
-                (event as any).image_url ||
-                "";
-    
-    // Debug log
-    if (process.env.NODE_ENV === "development") {
-      console.log(`EventCard - ${event.title}:`, {
-        hasImage: !!(event as any).image,
-        hasImageUrl: !!(event as any).imageUrl,
-        imageValue: img ? `${img.substring(0, 50)}...` : "no image",
-        imageLength: img?.length || 0
-      });
-    }
-    
-    // Check if image exists and is valid
-    if (!img || 
-        img.trim() === "" || 
-        img === "null" || 
-        img === "undefined" ||
-        img === null ||
-        img === undefined) {
-      return "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800";
-    }
-    
-    // Return image as-is (base64 or URL)
-    return img;
-  };
-
-  const imageSrc = getImageSrc();
-  const isBase64 = imageSrc.startsWith("data:");
+  const imageSrc = getEventImageUrl(event as any);
 
   return (
     <Link

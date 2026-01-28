@@ -229,6 +229,8 @@ export default function TicketPage() {
         return "#10B981";
       case "pending_payment":
         return "#F59E0B";
+      case "payment_in_review":
+        return "#3B82F6";
       case "used":
         return "#6B7280";
       case "cancelled":
@@ -244,6 +246,8 @@ export default function TicketPage() {
         return "Confirmed";
       case "pending_payment":
         return "Pending payment";
+      case "payment_in_review":
+        return "Payment in review";
       case "used":
         return "Used";
       case "cancelled":
@@ -419,12 +423,21 @@ export default function TicketPage() {
                       </button>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-muted">
-                    Send payment to:{" "}
-                    <span className="font-mono text-[#F9FAFB]">
-                      52863147982
-                    </span>
-                  </p>
+                  {(() => {
+                    const phoneNumber =
+                      (ticket.event as any)?.createdBy?.phone ||
+                      (ticket.event as any)?.phone ||
+                      (ticket.organizer as any)?.phone;
+                    if (!phoneNumber) return null;
+                    return (
+                      <p className="mt-2 text-xs text-muted">
+                        Send payment to:{" "}
+                        <span className="font-mono text-[#F9FAFB]">
+                          {phoneNumber}
+                        </span>
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -496,6 +509,169 @@ export default function TicketPage() {
                     </span>
                   ) : (
                     "Submit payment"
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {ticket.status === "payment_in_review" && (
+            <div className="border-t border-[#374151] bg-black/40 px-5 py-5">
+              <div className="mb-3 text-center">
+                <div className="text-base font-semibold text-[#3B82F6]">
+                  Payment in review
+                </div>
+                <p className="mt-1 text-sm text-[#E5E7EB]">
+                  Your payment screenshot has been submitted. Our team is
+                  reviewing it. You will receive a confirmation soon.
+                </p>
+              </div>
+
+              <div className="space-y-4 text-left text-sm text-[#D1D5DB]">
+                <div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Payment method
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap sm:gap-3">
+                    {[
+                      { key: "bank", label: "Bank" },
+                      { key: "easypaisa", label: "EasyPaisa" },
+                      { key: "jazzcash", label: "JazzCash" },
+                      { key: "other", label: "Other" }
+                    ].map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() =>
+                          setPaymentMethod(option.key as PaymentMethod)
+                        }
+                        className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                          paymentMethod === option.key
+                            ? "bg-accent text-black"
+                            : "bg-[#111827] text-mutedLight hover:bg-[#1F2937]"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const phoneNumber =
+                      (ticket.event as any)?.createdBy?.phone ||
+                      (ticket.event as any)?.phone ||
+                      (ticket.organizer as any)?.phone;
+                    if (!phoneNumber) {
+                      return (
+                        <p className="mt-2 text-xs text-muted">
+                          If you paid with the wrong method, you can update your
+                          screenshot below.
+                        </p>
+                      );
+                    }
+                    return (
+                      <p className="mt-2 text-xs text-muted">
+                        Send payment to:{" "}
+                        <span className="font-mono text-[#F9FAFB]">
+                          {phoneNumber}
+                        </span>
+                      </p>
+                    );
+                  })()}
+                </div>
+
+                <div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Current screenshot
+                  </div>
+                  {((ticket as any).paymentScreenshotUrl ||
+                    (ticket as any).payment?.screenshotUrl ||
+                    (ticket as any).payment?.screenshotUrlFull) && (
+                    <div className="mb-3 rounded-2xl border border-[#4B5563] bg-[#020617] p-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={
+                          (ticket as any).paymentScreenshotUrl ||
+                          (ticket as any).payment?.screenshotUrlFull ||
+                          (ticket as any).payment?.screenshotUrl
+                        }
+                        alt="Current payment screenshot"
+                        className="mx-auto max-h-64 rounded-lg object-contain"
+                      />
+                      <p className="mt-2 text-[11px] text-muted">
+                        This is the screenshot currently attached to your
+                        payment. You can upload a new one below if needed.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                    Upload new screenshot (optional)
+                  </div>
+                  {paymentScreenshotPreview ? (
+                    <div className="space-y-3">
+                      <div className="relative rounded-2xl border border-[#4B5563] bg-[#020617] p-4">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={paymentScreenshotPreview}
+                          alt="Payment screenshot preview"
+                          className="mx-auto max-h-64 rounded-lg object-contain"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentScreenshot(null);
+                            setPaymentScreenshotPreview(null);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = "";
+                            }
+                          }}
+                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
+                          aria-label="Remove screenshot"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="text-xs text-muted">
+                        Selected: {paymentScreenshot?.name}
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="block cursor-pointer rounded-2xl border border-dashed border-[#4B5563] bg-[#020617] px-4 py-6 text-center text-xs text-muted hover:border-accent/80 hover:bg-[#020617]/80 transition-colors">
+                      <div className="mb-2 text-3xl">🖼️</div>
+                      <div className="font-semibold text-[#E5E7EB]">
+                        Tap to select a new payment screenshot
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted">
+                        JPEG, PNG, GIF, or WebP (Max 5MB)
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleScreenshotChange}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSubmittingProof || !paymentScreenshot}
+                  onClick={handleSubmitPayment}
+                  className={`mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+                    isSubmittingProof || !paymentScreenshot
+                      ? "bg-[#1F2937] text-[#6B7280] cursor-not-allowed"
+                      : "bg-accent text-white hover:bg-accent/90"
+                  }`}
+                >
+                  {isSubmittingProof ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Updating...
+                    </span>
+                  ) : (
+                    "Update payment screenshot"
                   )}
                 </button>
               </div>

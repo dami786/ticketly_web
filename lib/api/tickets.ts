@@ -27,7 +27,13 @@ export interface Ticket {
   username: string;
   email: string;
   phone: string;
-  status: "pending_payment" | "confirmed" | "used" | "cancelled" | string;
+  status:
+    | "pending_payment"
+    | "payment_in_review"
+    | "confirmed"
+    | "used"
+    | "cancelled"
+    | string;
   accessKey?: string;
   qrCodeUrl?: string;
   createdAt: string;
@@ -93,6 +99,17 @@ export interface ScanTicketResponse {
     status: string;
     scannedAt: string;
   };
+}
+
+export interface UpdateTicketStatusByKeyRequest {
+  accessKey: string;
+  status: "used" | "cancelled";
+}
+
+export interface UpdateTicketStatusByKeyResponse {
+  success: boolean;
+  message: string;
+  ticket?: Ticket;
 }
 
 export const ticketsAPI = {
@@ -180,6 +197,13 @@ export const ticketsAPI = {
       console.error("Error submitting payment:", error);
       throw error;
     }
+  },
+
+  updateTicketStatusByKey: async (
+    data: UpdateTicketStatusByKeyRequest
+  ): Promise<UpdateTicketStatusByKeyResponse> => {
+    const response = await apiClient.put("/tickets/update-status-by-key", data);
+    return response.data;
   }
 };
 

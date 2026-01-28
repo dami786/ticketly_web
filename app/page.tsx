@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FiMapPin } from "react-icons/fi";
 import { EventCard } from "../components/EventCard";
 import { eventsAPI, type Event } from "../lib/api/events";
+import { getEventImageUrl, FALLBACK_IMAGE } from "../lib/utils/images";
 import { useAppStore } from "../store/useAppStore";
 
 export default function HomePage() {
@@ -23,15 +24,11 @@ export default function HomePage() {
         setError(null);
         const response = await eventsAPI.getApprovedEvents();
         if (response.success && response.events) {
-          // Process events and ensure images are properly set
-          const processedEvents = response.events.map((event: any) => {
-            const image = event.image || (event as any).imageUrl || null;
-
-            return {
-              ...event,
-              image
-            };
-          });
+          // Process events and ensure images are properly set (image/imageUrl)
+          const processedEvents = response.events.map((event: any) => ({
+            ...event,
+            image: event.image ?? event.imageUrl ?? null
+          }));
 
           const sorted = [...processedEvents].sort(
             (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -139,38 +136,22 @@ export default function HomePage() {
                     <img
                       key={`img-${featured[activeFeaturedIndex]._id}-${activeFeaturedIndex}-${imageKey}-${Date.now()}`}
                       src={
-                        (() => {
-                          const currentEvent = featured[activeFeaturedIndex];
-                          if (!currentEvent) return "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
-                          const img = currentEvent.image || "";
-                          // Add cache busting for base64 images
-                          const imageSrc = (img && 
-                                          img.trim() && 
-                                          img !== "null" && 
-                                          img !== "undefined")
-                            ? img
-                            : "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
-                          
-                          // For base64 images, ensure they're unique
-                          if (imageSrc.startsWith("data:")) {
-                            return imageSrc;
-                          }
-                          
-                          return imageSrc;
-                        })()
+                        featured[activeFeaturedIndex]
+                          ? getEventImageUrl(featured[activeFeaturedIndex] as any).replace(
+                              /w=800$/,
+                              "w=1200"
+                            )
+                          : FALLBACK_IMAGE.replace("w=800", "w=1200")
                       }
                       alt={featured[activeFeaturedIndex]?.title || "Event"}
                       className="h-72 w-full object-cover sm:h-80 transition-opacity duration-500"
                       loading="eager"
-                      onLoad={() => {
-                        console.log("Image loaded for event:", featured[activeFeaturedIndex]?.title);
-                      }}
                       onError={(e) => {
-                        console.error("Image error for event:", featured[activeFeaturedIndex]?.title);
                         // Fallback to default image if error
                         const target = e.target as HTMLImageElement;
                         if (!target.src.includes("unsplash.com")) {
-                          target.src = "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
+                          target.src =
+                            "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
                         }
                       }}
                     />

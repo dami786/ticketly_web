@@ -32,6 +32,28 @@ export default function ProfilePage() {
       if (!silent) setLoading(true);
       const response = await authAPI.getProfile();
       if (response.success && response.user) {
+        // Keep global user in sync with latest profile (including profileImage)
+        setUser(response.user);
+
+        // Set profile image from API response
+        if (response.user.profileImage || (response.user as any).profileImageUrl) {
+          const rawImageUrl =
+            (response.user as any).profileImageUrl || response.user.profileImage;
+
+          if (rawImageUrl) {
+            if (!rawImageUrl.startsWith("http")) {
+              const API_BASE_URL =
+                process.env.NEXT_PUBLIC_API_BASE_URL ||
+                "https://ticketlybackend-production.up.railway.app/api";
+              setProfileImageUrl(
+                `${API_BASE_URL.replace("/api", "")}${rawImageUrl}`
+              );
+            } else {
+              setProfileImageUrl(rawImageUrl);
+            }
+          }
+        }
+
         // Normalize created events
         if (
           Array.isArray(response.user.createdEvents) &&
@@ -112,17 +134,6 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     void loadProfile();
-    // Set profile image URL if user has profileImage
-    if (user.profileImage || (user as any).profileImageUrl) {
-      const imageUrl = (user as any).profileImageUrl || user.profileImage;
-      if (imageUrl && !imageUrl.startsWith("http")) {
-        // If it's a relative path, construct full URL
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://ticketlybackend-production.up.railway.app/api";
-        setProfileImageUrl(`${API_BASE_URL.replace("/api", "")}${imageUrl}`);
-      } else {
-        setProfileImageUrl(imageUrl);
-      }
-    }
   }, [user?._id, user?.profileImage, (user as any)?.profileImageUrl]);
 
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {

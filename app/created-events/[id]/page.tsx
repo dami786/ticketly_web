@@ -3,6 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { eventsAPI, type Event } from "../../../lib/api/events";
+import { ticketsAPI } from "../../../lib/api/tickets";
+import { useToast } from "../../../lib/hooks/useToast";
 
 type TicketStatus =
   | "all"
@@ -40,6 +42,14 @@ export default function CreatedEventDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TicketStatus>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [ticketNumber, setTicketNumber] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<"used" | "cancelled" | null>(
+    null
+  );
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const { success, error: showError } = useToast();
 
   const eventId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
@@ -106,6 +116,53 @@ export default function CreatedEventDetailsPage() {
       await Promise.all([loadEvent(), loadTickets()]);
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleUpdateTicketStatus = async () => {
+    if (!ticketNumber.trim()) {
+      setUpdateError("Please enter a ticket number");
+      return;
+    }
+
+    if (!selectedStatus) {
+      setUpdateError("Please select a status");
+      return;
+    }
+
+    try {
+      setUpdatingStatus(true);
+      setUpdateError(null);
+
+      const response = await ticketsAPI.updateTicketStatusByKey({
+        accessKey: ticketNumber.trim(),
+        status: selectedStatus
+      });
+
+      if (response.success) {
+        // Close modal + reset form
+        setUpdateModalOpen(false);
+        setTicketNumber("");
+        setSelectedStatus(null);
+        setUpdateError(null);
+
+        // Refresh tickets to reflect changes
+        await loadTickets();
+
+        success(response.message || "Ticket status updated successfully.");
+      } else {
+        showError(response.message || "Failed to update ticket status.");
+      }
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ??
+        err?.response?.data?.error ??
+        err?.message ??
+        "Failed to update ticket status.";
+      setUpdateError(message);
+      showError(message);
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
@@ -368,6 +425,100 @@ export default function CreatedEventDetailsPage() {
             )}
           </div>
         </div>
+
+        {/* Update Ticket Status by Ticket # */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setUpdateModalOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90"
+          >
+            <span>Update ticket status by Ticket #</span>
+          </button>
+        </div>
+
+        {updateModalOpen && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
+            <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl">
+              <h2 className="mb-2 text-lg font-bold text-white">
+                Update Ticket Status
+              </h2>
+              <p className="mb-4 text-sm text-mutedLight">
+                Enter the ticket number (Ticket # / access key) and choose a new
+                status. Typically used to mark tickets as{" "}
+                <span className="font-semibold text-white">used</span> or{" "}
+                <span className="font-semibold text-white">cancelled</span> at
+                the venue.
+              </p>
+
+              <div className="mb-3">
+                <label className="mb-1 block text-xs font-semibold text-white">
+                  Ticket number
+                </label>
+                <input
+                  value={ticketNumber}
+                  onChange={(e) => setTicketNumber(e.target.value)}
+                  placeholder="Enter ticket number / access key"
+                  className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+
+              <div className="mb-3">
+                <label className="mb-1 block text-xs font-semibold text-white">
+                  New status
+                </label>
+                <div className="flex gap-2 text-xs">
+                  {["used", "cancelled"].map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() =>
+                        setSelectedStatus(status as "used" | "cancelled")
+                      }
+                      className={`flex-1 rounded-xl px-3 py-2 font-semibold transition ${
+                        selectedStatus === status
+                          ? "bg-accent text-white"
+                          : "bg-[#111827] text-mutedLight hover:bg-[#1F2937]"
+                      }`}
+                    >
+                      {status === "used" ? "Used" : "Cancelled"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {updateError && (
+                <p className="mb-3 text-xs font-semibold text-danger">
+                  {updateError}
+                </p>
+              )}
+
+              <div className="mt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (updatingStatus) return;
+                    setUpdateModalOpen(false);
+                    setTicketNumber("");
+                    setSelectedStatus(null);
+                    setUpdateError(null);
+                  }}
+                  className="flex-1 rounded-xl bg-[#111827] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1F2937]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={updatingStatus}
+                  onClick={handleUpdateTicketStatus}
+                  className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+                >
+                  {updatingStatus ? "Updating…" : "Update status"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
