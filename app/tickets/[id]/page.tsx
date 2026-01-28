@@ -500,7 +500,7 @@ export default function TicketPage() {
                         }
                         className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
                           paymentMethod === option.key
-                            ? "bg-accent text-black"
+                            ? "bg-accent text-white"
                             : "bg-[#111827] text-mutedLight hover:bg-[#1F2937]"
                         }`}
                       >
