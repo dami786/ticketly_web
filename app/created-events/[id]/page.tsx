@@ -1,8 +1,9 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { FiCamera } from "react-icons/fi";
+import QRScanner from "../../../components/QRScanner";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { ticketsAPI } from "../../../lib/api/tickets";
 import { useToast } from "../../../lib/hooks/useToast";
@@ -51,7 +52,7 @@ export default function CreatedEventDetailsPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const { success, error: showError } = useToast();
-  const qrFileInputRef = useRef<HTMLInputElement>(null);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
 
   const eventId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
@@ -169,47 +170,7 @@ export default function CreatedEventDetailsPage() {
   };
 
   const handleScanQrClick = () => {
-    qrFileInputRef.current?.click();
-  };
-
-  const handleScanQrFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      // Check browser support
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const AnyWindow: any = window as any;
-      if (!("BarcodeDetector" in AnyWindow)) {
-        showError("QR scanning is not supported in this browser. Please enter ticket number manually.");
-        return;
-      }
-
-      const detector = new AnyWindow.BarcodeDetector({
-        formats: ["qr_code"]
-      });
-
-      const bitmap = await createImageBitmap(file);
-      const codes = await detector.detect(bitmap);
-
-      if (codes && codes.length > 0 && codes[0].rawValue) {
-        setTicketNumber(String(codes[0].rawValue));
-        success("QR code scanned. Ticket number filled automatically.");
-      } else {
-        showError("Could not read QR code. Please try again or enter ticket number manually.");
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("QR scan error:", err);
-      showError("Failed to scan QR code. Please enter ticket number manually.");
-    } finally {
-      // Reset input so same file can be selected again
-      if (qrFileInputRef.current) {
-        qrFileInputRef.current.value = "";
-      }
-    }
+    setQrScannerOpen(true);
   };
 
   const filteredTickets = tickets.filter((ticket: Ticket) =>
@@ -517,14 +478,6 @@ export default function CreatedEventDetailsPage() {
                   placeholder="Enter ticket number / access key"
                   className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
-                <input
-                  ref={qrFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handleScanQrFileChange}
-                />
               </div>
 
               <div className="mb-3">
@@ -583,6 +536,17 @@ export default function CreatedEventDetailsPage() {
             </div>
           </div>
         )}
+
+        <QRScanner
+          visible={qrScannerOpen}
+          onClose={() => setQrScannerOpen(false)}
+          onScan={(data) => {
+            setTicketNumber(data);
+            setQrScannerOpen(false);
+            if (updateError) setUpdateError(null);
+            success("QR code scanned. Ticket number filled automatically.");
+          }}
+        />
       </div>
     </div>
   );
