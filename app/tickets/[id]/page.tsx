@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ticketsAPI, type Ticket } from "../../../lib/api/tickets";
+import { API_BASE_URL } from "../../../lib/config";
 import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
 
@@ -25,6 +26,50 @@ export default function TicketPage() {
   const { success, error: showError, warning, info } = useToast();
 
   const ticketId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+
+  const resolveQrCodeUrl = (raw?: string | null): string | null => {
+    if (!raw) return null;
+
+    // Full URL
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      // Rewrite localhost/127 to deployed API origin
+      if (raw.includes("localhost") || raw.includes("127.0.0.1")) {
+        try {
+          const url = new URL(raw);
+          const path = url.pathname || "";
+          const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+          return `${origin}${path}`;
+        } catch {
+          const uploadsIndex = raw.indexOf("/uploads");
+          if (uploadsIndex !== -1) {
+            const path = raw.substring(uploadsIndex);
+            const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+            return `${origin}${path}`;
+          }
+        }
+      }
+      return raw;
+    }
+
+    // Relative path from backend
+    const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+    return `${origin}${raw}`;
+  };
+
+  const getQrCodeSrc = (t: Ticket): string | null => {
+    // 1) Try backend-provided qrCodeUrl (resolved to deployed origin)
+    const resolved = resolveQrCodeUrl(t.qrCodeUrl);
+    if (resolved) return resolved;
+
+    // 2) Fallback: generate QR via external API using accessKey
+    if (t.accessKey) {
+      const data = encodeURIComponent(t.accessKey);
+      // Using a public QR image API as a lightweight fallback
+      return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${data}`;
+    }
+
+    return null;
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -269,33 +314,28 @@ export default function TicketPage() {
         </button>
 
         <div className="overflow-hidden rounded-2xl bg-surface shadow-xl">
-          <div className="flex items-center justify-between border-b border-[#374151] px-5 py-4">
+          <div className="flex items-center border-b border-[#374151] px-5 py-4">
             <div className="text-xl font-bold text-white">ticketly</div>
-            <div className="text-right text-xs text-mutedLight">
-              <div>Ticket #</div>
-              <div className="font-mono text-white">
-                {ticket.id.slice(-8).toUpperCase()}
-              </div>
-            </div>
           </div>
 
-          <div className="px-5 pt-4">
+          <div className="px-5 pt-4 flex items-center justify-between gap-3">
             <span
               className="inline-flex rounded-lg bg-[#111827] px-3 py-1.5 text-xs font-semibold"
               style={{ color: getStatusColor(ticket.status) }}
             >
               {getStatusText(ticket.status)}
             </span>
+            {ticket.accessKey && (
+              <div className="text-right">
+                <div className="text-[11px] font-semibold uppercase text-muted">
+                  Ticket number
+                </div>
+                <div className="font-mono text-xs text-white">
+                  {ticket.accessKey}
+                </div>
+              </div>
+            )}
           </div>
-
-          {ticket.event?.image && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={ticket.event.image}
-              alt={ticket.event.title}
-              className="mt-3 h-52 w-full object-cover"
-            />
-          )}
 
           <div className="space-y-4 px-5 pb-5 pt-4 text-sm text-[#D1D5DB]">
             <div>
@@ -351,16 +391,61 @@ export default function TicketPage() {
             </div>
           </div>
 
+          {ticket.accessKey &&
+            ticket.status !== "confirmed" &&
+            ticket.status !== "cancelled" && (
+              <div className="border-t border-[#374151] px-5 py-8 flex flex-col items-center">
+                <div className="mb-3 text-center">
+                  <div className="text-base font-semibold text-white">
+                    Your ticket QR code
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    This code will be used to verify your entry at the event.
+                  </p>
+                </div>
+
+                {getQrCodeSrc(ticket) ? (
+                  <div className="mb-3 inline-block rounded-xl bg-white p-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={getQrCodeSrc(ticket) as string}
+                      alt="Ticket QR code"
+                      className="h-44 w-44 object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="mb-3 inline-block rounded-xl bg-white p-4">
+                    <div className="flex h-44 w-44 flex-col items-center justify-center gap-2 rounded-lg bg-[#F3F4F6] px-2 text-center">
+                      <div className="text-xs font-bold text-[#6B7280]">
+                        Ticket number
+                      </div>
+                      <div className="break-all text-[10px] font-mono text-[#4B5563]">
+                        {ticket.accessKey}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {ticket.status === "pending_payment" && (
+                  <div className="mt-1 rounded-lg bg-[#F59E0B]/15 px-4 py-2">
+                    <p className="text-center text-[11px] font-semibold text-[#FBBF24]">
+                      Complete payment to activate this ticket.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
           {ticket.status === "confirmed" && (
             <div className="border-t border-[#374151] px-5 py-5 text-center">
               <div className="mb-3 text-base font-semibold text-white">
                 Scan at entry
               </div>
-              {ticket.qrCodeUrl ? (
+              {getQrCodeSrc(ticket) ? (
                 <div className="mx-auto mb-3 inline-block rounded-xl bg-white p-5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={ticket.qrCodeUrl}
+                    src={getQrCodeSrc(ticket) as string}
                     alt="QR code"
                     className="h-48 w-48"
                   />

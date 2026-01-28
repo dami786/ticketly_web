@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FiHeart } from "react-icons/fi";
+import { FiHeart, FiMail, FiPhone } from "react-icons/fi";
 import { authAPI } from "../../../lib/api/auth";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { ticketsAPI } from "../../../lib/api/tickets";
@@ -356,7 +356,11 @@ export default function EventDetailsPage() {
               onClick={handleRegister}
               className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
             >
-              {creatingTicket ? "Processing…" : "Register now"}
+              {creatingTicket
+                ? "Processing…"
+                : userTickets.length > 0
+                ? "Get more tickets"
+                : "Register now"}
             </button>
           </div>
 
@@ -366,6 +370,42 @@ export default function EventDetailsPage() {
               {event.description}
             </p>
           </div>
+
+          {(event.email || event.phone) && (
+            <div className="border-t border-[#1F2937] p-5">
+              <h2 className="mb-3 text-lg font-bold text-white">
+                Contact information
+              </h2>
+              {event.email && (
+                <div className="mb-2 flex items-center gap-2 text-sm text-[#D1D5DB]">
+                  <FiMail className="h-4 w-4 text-mutedLight" />
+                  <span>{event.email}</span>
+                </div>
+              )}
+              {event.phone && (
+                <div className="flex items-center gap-2 text-sm text-[#D1D5DB]">
+                  <FiPhone className="h-4 w-4 text-mutedLight" />
+                  <span>{event.phone}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {event.createdBy && (
+            <div className="border-t border-[#1F2937] p-5">
+              <h2 className="mb-3 text-lg font-bold text-white">
+                Organized by
+              </h2>
+              <p className="text-base font-semibold text-white">
+                {event.createdBy.fullName}
+              </p>
+              {event.createdBy.email && (
+                <p className="mt-1 text-sm text-mutedLight">
+                  {event.createdBy.email}
+                </p>
+              )}
+            </div>
+          )}
 
           {user && userTickets.length > 0 && (
             <div className="border-t border-[#1F2937] p-5">

@@ -11,6 +11,42 @@ import { useAppStore } from "../../store/useAppStore";
 
 type TabKey = "created" | "joined" | "liked";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  "https://ticketlybackend-production.up.railway.app/api";
+
+const resolveProfileImageUrl = (
+  rawImage: string | null | undefined
+): string | null => {
+  if (!rawImage) return null;
+
+  // If full URL
+  if (rawImage.startsWith("http://") || rawImage.startsWith("https://")) {
+    // If it points to localhost/127, rewrite to deployed origin
+    if (rawImage.includes("localhost") || rawImage.includes("127.0.0.1")) {
+      try {
+        const url = new URL(rawImage);
+        const path = url.pathname || "";
+        const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+        return `${origin}${path}`;
+      } catch {
+        // Fallback: try to find /uploads path
+        const uploadsIndex = rawImage.indexOf("/uploads");
+        if (uploadsIndex !== -1) {
+          const path = rawImage.substring(uploadsIndex);
+          const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+          return `${origin}${path}`;
+        }
+      }
+    }
+    return rawImage;
+  }
+
+  // Relative path from backend, prefix with API origin
+  const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+  return `${origin}${rawImage}`;
+};
+
 export default function ProfilePage() {
   const router = useRouter();
   const user = useAppStore((state) => state.user);
@@ -40,16 +76,11 @@ export default function ProfilePage() {
           const rawImageUrl =
             (response.user as any).profileImageUrl || response.user.profileImage;
 
-          if (rawImageUrl) {
-            if (!rawImageUrl.startsWith("http")) {
-              const API_BASE_URL =
-                process.env.NEXT_PUBLIC_API_BASE_URL ||
-                "https://ticketlybackend-production.up.railway.app/api";
-              setProfileImageUrl(
-                `${API_BASE_URL.replace("/api", "")}${rawImageUrl}`
-              );
-            } else {
-              setProfileImageUrl(rawImageUrl);
+          const finalUrl = resolveProfileImageUrl(rawImageUrl);
+          if (finalUrl) {
+            setProfileImageUrl(finalUrl);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("ticketly_profile_image_url", finalUrl);
             }
           }
         }
@@ -133,6 +164,28 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
+
+    // 1) Try to use image from current user object (store) if available
+    if (!profileImageUrl) {
+      const rawFromUser =
+        (user as any).profileImageUrl || (user as any).profileImage;
+      const resolved = resolveProfileImageUrl(rawFromUser);
+      if (resolved) {
+        setProfileImageUrl(resolved);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("ticketly_profile_image_url", resolved);
+        }
+      }
+    }
+
+    // 2) If still no image, restore from localStorage to avoid disappearing avatar on refresh
+    if (typeof window !== "undefined" && !profileImageUrl) {
+      const stored = window.localStorage.getItem("ticketly_profile_image_url");
+      if (stored) {
+        setProfileImageUrl(stored);
+      }
+    }
+
     void loadProfile();
   }, [user?._id, user?.profileImage, (user as any)?.profileImageUrl]);
 
@@ -167,12 +220,11 @@ export default function ProfilePage() {
           if (response.success) {
             // Update profile image URL
             const imageUrl = response.profileImageUrl || response.profileImage;
-            if (imageUrl) {
-              if (!imageUrl.startsWith("http")) {
-                const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://ticketlybackend-production.up.railway.app/api";
-                setProfileImageUrl(`${API_BASE_URL.replace("/api", "")}${imageUrl}`);
-              } else {
-                setProfileImageUrl(imageUrl);
+            const finalUrl = resolveProfileImageUrl(imageUrl);
+            if (finalUrl) {
+              setProfileImageUrl(finalUrl);
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("ticketly_profile_image_url", finalUrl);
               }
             }
             
@@ -286,10 +338,6 @@ export default function ProfilePage() {
                 src={profileImageUrl}
                 alt={user.fullName}
                 className="h-full w-full rounded-full object-cover"
-                onError={() => {
-                  // Fallback to initial if image fails to load
-                  setProfileImageUrl(null);
-                }}
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center rounded-full bg-accent text-4xl font-bold text-white">
