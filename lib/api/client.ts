@@ -65,6 +65,19 @@ apiClient.interceptors.request.use(
     } else if (config.headers && config.data && !config.headers["Content-Type"] && !config.headers["content-type"]) {
       config.headers["Content-Type"] = "application/json";
     }
+    
+    // Log request for debugging (only in development)
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+      if (config.data && typeof config.data === "object") {
+        const dataCopy = { ...config.data };
+        if (dataCopy.image && typeof dataCopy.image === "string" && dataCopy.image.length > 100) {
+          dataCopy.image = `${dataCopy.image.substring(0, 50)}... (${(dataCopy.image.length / 1024).toFixed(2)} KB)`;
+        }
+        console.log("[API Request Data]", dataCopy);
+      }
+    }
+    
     return config;
   },
   (error: AxiosError) => Promise.reject(error)
@@ -88,7 +101,17 @@ const processQueue = (error: AxiosError | null, token: string | null = null) => 
 };
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses in development
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
+        status: response.status,
+        success: (response.data as any)?.success,
+        data: response.data
+      });
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 

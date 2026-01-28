@@ -108,6 +108,8 @@ export interface UserProfile {
   phone?: string;
   companyName?: string;
   role?: string;
+  profileImage?: string;
+  profileImageUrl?: string;
   createdEvents?: any[];
   joinedEvents?: string[] | JoinedEvent[];
   likedEvents?: any[];
@@ -158,6 +160,55 @@ export const authAPI = {
     const response = await apiClient.delete("/auth/delete");
     clearTokens();
     return response.data;
+  },
+
+  uploadProfileImage: async (imageUri: string): Promise<{ 
+    success: boolean; 
+    message: string; 
+    profileImage?: string;
+    profileImageUrl?: string;
+    user?: UserProfile;
+  }> => {
+    try {
+      // Convert image URI to File/Blob
+      let file: File | Blob;
+      
+      if (imageUri.startsWith("data:")) {
+        // Base64 data URL
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        file = blob;
+      } else if (imageUri.startsWith("blob:")) {
+        // Blob URL
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        file = blob;
+      } else if (imageUri.startsWith("http://") || imageUri.startsWith("https://")) {
+        // HTTP URL
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        file = blob;
+      } else {
+        throw new Error("Unsupported image URI format");
+      }
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append("image", file, "profile-image.jpg");
+
+      // Upload to API
+      const response = await apiClient.post("/auth/upload-profile-image", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 60000, // 60 seconds
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error("Error uploading profile image:", error);
+      throw error;
+    }
   }
 };
 

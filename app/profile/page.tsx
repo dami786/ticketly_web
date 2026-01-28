@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FiCamera, FiMenu } from "react-icons/fi";
 import { EventCard } from "../../components/EventCard";
 import { authAPI } from "../../lib/api/auth";
 import { eventsAPI } from "../../lib/api/events";
+import { useToast } from "../../lib/hooks/useToast";
 import { useAppStore } from "../../store/useAppStore";
 
 type TabKey = "created" | "joined" | "liked";
@@ -13,6 +14,8 @@ type TabKey = "created" | "joined" | "liked";
 export default function ProfilePage() {
   const router = useRouter();
   const user = useAppStore((state) => state.user);
+  const setUser = useAppStore((state) => state.setUser);
+  const { success, error: showError } = useToast();
 
   const [createdEvents, setCreatedEvents] = useState<any[]>([]);
   const [joinedEvents, setJoinedEvents] = useState<any[]>([]);
@@ -20,6 +23,9 @@ export default function ProfilePage() {
   const [joinedEventsData, setJoinedEventsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>("created");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadProfile = async (silent = false) => {
     try {
@@ -32,12 +38,36 @@ export default function ProfilePage() {
           response.user.createdEvents.length > 0 &&
           typeof response.user.createdEvents[0] === "object"
         ) {
-          setCreatedEvents(response.user.createdEvents);
+          // Process events to ensure images are properly set
+          const processedEvents = response.user.createdEvents.map((event: any) => {
+            // Check multiple possible field names for image
+            const image = event.image || 
+                         event.imageUrl || 
+                         event.image_url ||
+                         null;
+            return {
+              ...event,
+              image: image // Set to image field for consistency
+            };
+          });
+          setCreatedEvents(processedEvents);
         } else {
           // fallback to API
           const myEvents = await eventsAPI.getMyEvents();
           if (myEvents.success && myEvents.events) {
-            setCreatedEvents(myEvents.events);
+            // Process events to ensure images are properly set
+            const processedEvents = myEvents.events.map((event: any) => {
+              // Check multiple possible field names for image
+              const image = event.image || 
+                           event.imageUrl || 
+                           event.image_url ||
+                           null;
+              return {
+                ...event,
+                image: image // Set to image field for consistency
+              };
+            });
+            setCreatedEvents(processedEvents);
           }
         }
 
@@ -82,7 +112,107 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     void loadProfile();
-  }, [user?._id]);
+    // Set profile image URL if user has profileImage
+    if (user.profileImage || (user as any).profileImageUrl) {
+      const imageUrl = (user as any).profileImageUrl || user.profileImage;
+      if (imageUrl && !imageUrl.startsWith("http")) {
+        // If it's a relative path, construct full URL
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://ticketlybackend-production.up.railway.app/api";
+        setProfileImageUrl(`${API_BASE_URL.replace("/api", "")}${imageUrl}`);
+      } else {
+        setProfileImageUrl(imageUrl);
+      }
+    }
+  }, [user?._id, user?.profileImage, (user as any)?.profileImageUrl]);
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      showError("Please select a valid image file.");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showError("Image size should be less than 5MB.");
+      return;
+    }
+
+    setUploadingImage(true);
+
+    try {
+      // Convert file to data URL
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const imageUri = event.target?.result as string;
+          
+          // Upload image
+          const response = await authAPI.uploadProfileImage(imageUri);
+          
+          if (response.success) {
+            // Update profile image URL
+            const imageUrl = response.profileImageUrl || response.profileImage;
+            if (imageUrl) {
+              if (!imageUrl.startsWith("http")) {
+                const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://ticketlybackend-production.up.railway.app/api";
+                setProfileImageUrl(`${API_BASE_URL.replace("/api", "")}${imageUrl}`);
+              } else {
+                setProfileImageUrl(imageUrl);
+              }
+            }
+            
+            // Update user in store if provided
+            if (response.user) {
+              setUser(response.user);
+            } else {
+              // Refresh profile to get updated user data
+              const profile = await authAPI.getProfile();
+              if (profile.success && profile.user) {
+                setUser(profile.user);
+              }
+            }
+            
+            success("Profile image uploaded successfully!");
+          } else {
+            showError(response.message || "Failed to upload image.");
+          }
+        } catch (error: any) {
+          console.error("Image upload error:", error);
+          const errorMessage = 
+            error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            error?.message ||
+            "Failed to upload image. Please try again.";
+          showError(errorMessage);
+        } finally {
+          setUploadingImage(false);
+          // Reset file input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
+        }
+      };
+      
+      reader.onerror = () => {
+        showError("Failed to read image file.");
+        setUploadingImage(false);
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error("Image selection error:", error);
+      showError("Failed to process image. Please try again.");
+      setUploadingImage(false);
+    }
+  };
+
+  const handleCameraClick = () => {
+    fileInputRef.current?.click();
+  };
 
   const createdCount = createdEvents.length;
   const joinedCount = joinedEventsData.length;
@@ -139,16 +269,43 @@ export default function ProfilePage() {
 
         <section className="mb-6 text-center">
           <div className="relative mx-auto mb-4 h-24 w-24">
-            <div className="flex h-full w-full items-center justify-center rounded-full bg-accent text-4xl font-bold text-white">
-              {user.fullName.charAt(0).toUpperCase()}
-            </div>
+            {profileImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profileImageUrl}
+                alt={user.fullName}
+                className="h-full w-full rounded-full object-cover"
+                onError={() => {
+                  // Fallback to initial if image fails to load
+                  setProfileImageUrl(null);
+                }}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center rounded-full bg-accent text-4xl font-bold text-white">
+                {user.fullName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <button
               type="button"
-              className="absolute bottom-1 right-1 flex h-8 w-8 items-center justify-center rounded-full bg-background text-accent shadow-lg ring-2 ring-background"
+              onClick={handleCameraClick}
+              disabled={uploadingImage}
+              className="absolute bottom-1 right-1 flex h-8 w-8 items-center justify-center rounded-full bg-background text-accent shadow-lg ring-2 ring-background transition-opacity hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Change profile photo"
             >
-              <FiCamera size={16} />
+              {uploadingImage ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+              ) : (
+                <FiCamera size={16} />
+              )}
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              className="hidden"
+              aria-label="Upload profile image"
+            />
           </div>
           <h1 className="text-2xl font-bold text-white">{user.fullName}</h1>
           {user.companyName && (

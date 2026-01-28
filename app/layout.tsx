@@ -90,17 +90,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
             <Link
               href="/create-event"
-              className="flex flex-1 items-center justify-center"
+              className={`flex flex-1 items-center justify-center transition ${
+                pathname.startsWith("/create-event")
+                  ? "text-accent"
+                  : "text-mutedLight"
+              }`}
             >
-              <div
-                className={`flex h-11 w-11 items-center justify-center rounded-full shadow-lg transition ${
-                  pathname.startsWith("/create-event")
-                    ? "bg-accent text-black"
-                    : "bg-[#111827] text-mutedLight"
-                }`}
-              >
-                <FiPlusCircle size={22} />
-              </div>
+              <FiPlusCircle size={22} />
             </Link>
 
             <Link

@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { FiHeart } from "react-icons/fi";
 import { authAPI } from "../../../lib/api/auth";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { ticketsAPI } from "../../../lib/api/tickets";
@@ -22,6 +23,8 @@ export default function EventDetailsPage() {
   const [userTickets, setUserTickets] = useState<any[]>([]);
   const [phoneInput, setPhoneInput] = useState("");
   const [showPhonePrompt, setShowPhonePrompt] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [liking, setLiking] = useState(false);
   const { success, error: showError, warning } = useToast();
 
   const eventId = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -83,6 +86,24 @@ export default function EventDetailsPage() {
     void loadTickets();
   }, [eventId, user]);
 
+  // Check if event is liked
+  useEffect(() => {
+    if (!user || !eventId) {
+      setIsLiked(false);
+      return;
+    }
+    
+    const likedEvents = user.likedEvents || [];
+    const isEventLiked = likedEvents.some((likedEvent: any) => {
+      const eventIdToCheck = typeof likedEvent === "string" 
+        ? likedEvent 
+        : likedEvent._id || likedEvent.id;
+      return eventIdToCheck === eventId;
+    });
+    
+    setIsLiked(isEventLiked);
+  }, [user, eventId]);
+
   const handleRegister = async () => {
     if (!isAuthenticated) {
       if (confirm("You need to login to register. Go to login page?")) {
@@ -98,6 +119,64 @@ export default function EventDetailsPage() {
       return;
     }
     await createTicket(phone);
+  };
+
+  const handleLikeToggle = async () => {
+    if (!isAuthenticated) {
+      if (confirm("You need to login to like events. Go to login page?")) {
+        router.push("/login");
+      }
+      return;
+    }
+
+    if (!eventId) return;
+
+    setLiking(true);
+    try {
+      if (isLiked) {
+        const response = await eventsAPI.unlikeEvent(String(eventId));
+        if (response.success) {
+          setIsLiked(false);
+          success("Event removed from liked events");
+          // Refresh user profile to update likedEvents
+          try {
+            const profile = await authAPI.getProfile();
+            if (profile.success && profile.user) {
+              setUser(profile.user);
+            }
+          } catch {
+            // ignore
+          }
+        } else {
+          showError(response.message || "Failed to unlike event");
+        }
+      } else {
+        const response = await eventsAPI.likeEvent(String(eventId));
+        if (response.success) {
+          setIsLiked(true);
+          success("Event added to liked events");
+          // Refresh user profile to update likedEvents
+          try {
+            const profile = await authAPI.getProfile();
+            if (profile.success && profile.user) {
+              setUser(profile.user);
+            }
+          } catch {
+            // ignore
+          }
+        } else {
+          showError(response.message || "Failed to like event");
+        }
+      }
+    } catch (error: any) {
+      showError(
+        error?.response?.data?.message ??
+          error?.message ??
+          "Failed to update like status"
+      );
+    } finally {
+      setLiking(false);
+    }
   };
 
   const createTicket = async (phone: string) => {
@@ -215,13 +294,33 @@ export default function EventDetailsPage() {
               <h1 className="flex-1 text-2xl font-bold text-white">
                 {event.title}
               </h1>
-              <span className="rounded-xl bg-[#374151] px-3 py-1.5 text-xs font-semibold text-[#D1D5DB]">
-                {event.status === "approved"
-                  ? "Approved"
-                  : event.status === "pending"
-                  ? "Pending"
-                  : "Draft"}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleLikeToggle}
+                  disabled={liking}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
+                    isLiked
+                      ? "bg-accent text-white hover:bg-accent/90"
+                      : "bg-[#374151] text-[#D1D5DB] hover:bg-[#4B5563]"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  aria-label={isLiked ? "Unlike event" : "Like event"}
+                >
+                  {liking ? (
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  ) : (
+                    <FiHeart className={`h-3.5 w-3.5 ${isLiked ? "fill-current" : ""}`} />
+                  )}
+                  <span>{isLiked ? "Liked" : "Like"}</span>
+                </button>
+                <span className="rounded-xl bg-[#374151] px-3 py-1.5 text-xs font-semibold text-[#D1D5DB]">
+                  {event.status === "approved"
+                    ? "Approved"
+                    : event.status === "pending"
+                    ? "Pending"
+                    : "Draft"}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-3 text-sm text-[#D1D5DB]">

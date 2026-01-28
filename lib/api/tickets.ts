@@ -114,6 +114,72 @@ export const ticketsAPI = {
   scanTicket: async (data: ScanTicketRequest): Promise<ScanTicketResponse> => {
     const response = await apiClient.post("/tickets/scan", data);
     return response.data;
+  },
+
+  submitPayment: async (
+    ticketId: string,
+    method: string,
+    screenshotUri: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    payment?: {
+      id: string;
+      ticketId: string;
+      amount: number;
+      method: string;
+      status: string;
+      screenshotUrl?: string;
+      screenshotUrlFull?: string;
+      createdAt: string;
+    };
+    ticket?: {
+      id: string;
+      status: string;
+    };
+  }> => {
+    try {
+      // Convert image URI to File/Blob
+      let file: File | Blob;
+      
+      if (screenshotUri.startsWith("data:")) {
+        // Base64 data URL
+        const response = await fetch(screenshotUri);
+        const blob = await response.blob();
+        file = blob;
+      } else if (screenshotUri.startsWith("blob:")) {
+        // Blob URL
+        const response = await fetch(screenshotUri);
+        const blob = await response.blob();
+        file = blob;
+      } else if (screenshotUri.startsWith("http://") || screenshotUri.startsWith("https://")) {
+        // HTTP URL
+        const response = await fetch(screenshotUri);
+        const blob = await response.blob();
+        file = blob;
+      } else {
+        throw new Error("Unsupported image URI format");
+      }
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append("ticketId", ticketId);
+      formData.append("method", method);
+      formData.append("screenshot", file, "payment-screenshot.jpg");
+
+      // Upload to API
+      const response = await apiClient.post("/payments", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 60000, // 60 seconds
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error("Error submitting payment:", error);
+      throw error;
+    }
   }
 };
 

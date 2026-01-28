@@ -62,12 +62,69 @@ export interface CreateEventResponse {
 export const eventsAPI = {
   getApprovedEvents: async (): Promise<EventsResponse> => {
     const response = await apiClient.get("/events");
+    
+    // Debug: Log API response to check image fields
+    if (response.data?.events && Array.isArray(response.data.events)) {
+      console.log("=== API Events Response ===");
+      console.log("Total events:", response.data.events.length);
+      response.data.events.forEach((event: any, index: number) => {
+        console.log(`Event ${index + 1}: ${event.title}`, {
+          hasImage: !!event.image,
+          hasImageUrl: !!event.imageUrl,
+          imageType: event.image ? typeof event.image : "none",
+          imageLength: event.image ? event.image.length : 0,
+          imagePreview: event.image ? `${event.image.substring(0, 50)}...` : "no image",
+          allFields: Object.keys(event).filter(k => k.toLowerCase().includes("image"))
+        });
+      });
+    }
+    
     return response.data;
   },
 
   createEvent: async (data: CreateEventRequest): Promise<CreateEventResponse> => {
-    const response = await apiClient.post("/events", data);
-    return response.data;
+    try {
+      console.log("=== Creating Event ===");
+      console.log("Event data:", {
+        title: data.title,
+        date: data.date,
+        location: data.location,
+        email: data.email,
+        phone: data.phone,
+        hasImage: !!data.image,
+        imageSize: data.image ? `${(data.image.length / 1024).toFixed(2)} KB` : "none"
+      });
+      
+      const response = await apiClient.post("/events", data, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 60000, // 60 seconds
+      });
+      
+      console.log("✅ Event created successfully!");
+      console.log("Response status:", response.status);
+      console.log("Response data:", response.data);
+      console.log("Response data type:", typeof response.data);
+      
+      // Return the response data - handle both direct data and nested structure
+      const responseData = response.data || response;
+      return responseData as CreateEventResponse;
+    } catch (error: any) {
+      console.error("❌ Error creating event:");
+      console.error("Error type:", error?.constructor?.name);
+      console.error("Error message:", error?.message);
+      console.error("Error code:", error?.code);
+      console.error("Error status:", error?.response?.status);
+      console.error("Error response data:", error?.response?.data);
+      console.error("Error response headers:", error?.response?.headers);
+      console.error("Request URL:", error?.config?.url);
+      console.error("Request method:", error?.config?.method);
+      console.error("Request data size:", error?.config?.data ? JSON.stringify(error.config.data).length : "unknown");
+      
+      // Re-throw with more context
+      throw error;
+    }
   },
 
   getMyEvents: async (): Promise<EventsResponse> => {
@@ -82,6 +139,16 @@ export const eventsAPI = {
 
   getTicketsByEventId: async (eventId: string): Promise<{ success: boolean; count: number; tickets: any[] }> => {
     const response = await apiClient.get(`/events/${eventId}/tickets`);
+    return response.data;
+  },
+
+  likeEvent: async (eventId: string): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.post(`/events/${eventId}/like`);
+    return response.data;
+  },
+
+  unlikeEvent: async (eventId: string): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.post(`/events/${eventId}/unlike`);
     return response.data;
   }
 };

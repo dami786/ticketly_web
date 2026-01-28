@@ -18,7 +18,19 @@ export default function ExplorePage() {
         setLoading(true);
         const response = await eventsAPI.getApprovedEvents();
         if (response.success && response.events) {
-          setEvents(response.events);
+          // Process events and ensure images are properly set
+          const processedEvents = response.events.map((event: any) => {
+            // Check multiple possible field names for image
+            const image = event.image || 
+                         event.imageUrl || 
+                         event.image_url ||
+                         null;
+            return {
+              ...event,
+              image: image // Set to image field for consistency
+            };
+          });
+          setEvents(processedEvents);
         }
       } finally {
         setLoading(false);

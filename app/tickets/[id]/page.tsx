@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ticketsAPI, type Ticket } from "../../../lib/api/tickets";
 import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
@@ -10,7 +10,7 @@ export default function TicketPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const user = useAppStore((state) => state.user);
-  const { info } = useToast();
+  const setUser = useAppStore((state) => state.setUser);
 
   type PaymentMethod = "bank" | "easypaisa" | "jazzcash" | "other";
 
@@ -18,8 +18,11 @@ export default function TicketPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank");
-  const [paymentScreenshotName, setPaymentScreenshotName] = useState<string>("");
+  const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
+  const [paymentScreenshotPreview, setPaymentScreenshotPreview] = useState<string | null>(null);
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { success, error: showError, warning, info } = useToast();
 
   const ticketId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
@@ -54,7 +57,115 @@ export default function TicketPage() {
 
   const handleScreenshotChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    setPaymentScreenshotName(file ? file.name : "");
+    if (!file) {
+      setPaymentScreenshot(null);
+      setPaymentScreenshotPreview(null);
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      showError("Please select a valid image file.");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showError("Image size should be less than 5MB.");
+      return;
+    }
+
+    setPaymentScreenshot(file);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPaymentScreenshotPreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmitPayment = async () => {
+    if (!ticket || !ticketId) {
+      showError("Ticket information is missing.");
+      return;
+    }
+
+    if (!paymentScreenshot) {
+      warning("Please select a payment screenshot.");
+      return;
+    }
+
+    setIsSubmittingProof(true);
+
+    try {
+      // Convert payment method to API format
+      const methodMap: Record<PaymentMethod, string> = {
+        bank: "bank_transfer",
+        easypaisa: "easypaisa",
+        jazzcash: "jazzcash",
+        other: "manual"
+      };
+      const apiMethod = methodMap[paymentMethod];
+
+      // Convert file to data URL
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const screenshotUri = event.target?.result as string;
+          
+          const response = await ticketsAPI.submitPayment(
+            String(ticketId),
+            apiMethod,
+            screenshotUri
+          );
+
+          if (response.success) {
+            success("Payment screenshot submitted successfully! Your payment is under review.");
+            
+            // Refresh ticket data
+            try {
+              const ticketResponse = await ticketsAPI.getTicketById(String(ticketId));
+              if (ticketResponse.success && ticketResponse.ticket) {
+                setTicket(ticketResponse.ticket);
+              }
+            } catch {
+              // ignore
+            }
+
+            // Reset form
+            setPaymentScreenshot(null);
+            setPaymentScreenshotPreview(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = "";
+            }
+          } else {
+            showError(response.message || "Failed to submit payment screenshot.");
+          }
+        } catch (error: any) {
+          console.error("Payment submission error:", error);
+          const errorMessage = 
+            error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            error?.message ||
+            "Failed to submit payment. Please try again.";
+          showError(errorMessage);
+        } finally {
+          setIsSubmittingProof(false);
+        }
+      };
+
+      reader.onerror = () => {
+        showError("Failed to read screenshot file.");
+        setIsSubmittingProof(false);
+      };
+
+      reader.readAsDataURL(paymentScreenshot);
+    } catch (error: any) {
+      console.error("Payment submission error:", error);
+      showError("Failed to submit payment. Please try again.");
+      setIsSubmittingProof(false);
+    }
   };
 
   if (loading) {
@@ -320,47 +431,72 @@ export default function TicketPage() {
                   <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
                     Payment screenshot
                   </div>
-                  <label className="block cursor-pointer rounded-2xl border border-dashed border-[#4B5563] bg-[#020617] px-4 py-6 text-center text-xs text-muted hover:border-accent/80 hover:bg-[#020617]/80">
-                    <div className="mb-2 text-3xl">🖼️</div>
-                    <div className="font-semibold text-[#E5E7EB]">
-                      Tap to select payment screenshot
-                    </div>
-                    <div className="mt-1 text-[11px] text-muted">
-                      JPEG, PNG, GIF, or WebP (Max 5MB)
-                    </div>
-                    {paymentScreenshotName && (
-                      <div className="mt-2 truncate text-[11px] text-[#9CA3AF]">
-                        Selected: {paymentScreenshotName}
+                  {paymentScreenshotPreview ? (
+                    <div className="space-y-3">
+                      <div className="relative rounded-2xl border border-[#4B5563] bg-[#020617] p-4">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={paymentScreenshotPreview}
+                          alt="Payment screenshot preview"
+                          className="mx-auto max-h-64 rounded-lg object-contain"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentScreenshot(null);
+                            setPaymentScreenshotPreview(null);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = "";
+                            }
+                          }}
+                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
+                          aria-label="Remove screenshot"
+                        >
+                          ✕
+                        </button>
                       </div>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleScreenshotChange}
-                    />
-                  </label>
+                      <div className="text-xs text-muted">
+                        Selected: {paymentScreenshot?.name}
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="block cursor-pointer rounded-2xl border border-dashed border-[#4B5563] bg-[#020617] px-4 py-6 text-center text-xs text-muted hover:border-accent/80 hover:bg-[#020617]/80 transition-colors">
+                      <div className="mb-2 text-3xl">🖼️</div>
+                      <div className="font-semibold text-[#E5E7EB]">
+                        Tap to select payment screenshot
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted">
+                        JPEG, PNG, GIF, or WebP (Max 5MB)
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleScreenshotChange}
+                      />
+                    </label>
+                  )}
                 </div>
 
                 <button
                   type="button"
-                  disabled={isSubmittingProof || !paymentScreenshotName}
-                  onClick={() => {
-                    setIsSubmittingProof(true);
-                    // TODO: Wire up to backend endpoint when available
-                    // For now just show a friendly message.
-                    info(
-                      "Your payment screenshot will be submitted once this feature is connected to the server."
-                    );
-                    setTimeout(() => setIsSubmittingProof(false), 400);
-                  }}
-                  className={`mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-semibold ${
-                    isSubmittingProof || !paymentScreenshotName
-                      ? "bg-[#1F2937] text-[#6B7280]"
+                  disabled={isSubmittingProof || !paymentScreenshot}
+                  onClick={handleSubmitPayment}
+                  className={`mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+                    isSubmittingProof || !paymentScreenshot
+                      ? "bg-[#1F2937] text-[#6B7280] cursor-not-allowed"
                       : "bg-accent text-white hover:bg-accent/90"
                   }`}
                 >
-                  Submit payment
+                  {isSubmittingProof ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Submitting...
+                    </span>
+                  ) : (
+                    "Submit payment"
+                  )}
                 </button>
               </div>
             </div>

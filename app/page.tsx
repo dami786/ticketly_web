@@ -14,6 +14,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeFeaturedIndex, setActiveFeaturedIndex] = useState(0);
+  const [imageKey, setImageKey] = useState(0); // Force image reload
 
   useEffect(() => {
     const load = async () => {
@@ -22,9 +23,20 @@ export default function HomePage() {
         setError(null);
         const response = await eventsAPI.getApprovedEvents();
         if (response.success && response.events) {
-          const sorted = [...response.events].sort(
+          // Process events and ensure images are properly set
+          const processedEvents = response.events.map((event: any) => {
+            const image = event.image || (event as any).imageUrl || null;
+
+            return {
+              ...event,
+              image
+            };
+          });
+
+          const sorted = [...processedEvents].sort(
             (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
           );
+
           setEvents(sorted);
           setUpcoming(sorted);
           setFeatured(sorted.slice(0, Math.min(5, sorted.length)));
@@ -47,13 +59,21 @@ export default function HomePage() {
     if (featured.length <= 1) return;
 
     const id = window.setInterval(() => {
-      setActiveFeaturedIndex((prev) =>
-        prev + 1 >= featured.length ? 0 : prev + 1
-      );
+      setActiveFeaturedIndex((prev) => {
+        const next = prev + 1 >= featured.length ? 0 : prev + 1;
+        // Force image reload by updating key
+        setImageKey((k) => k + 1);
+        return next;
+      });
     }, 2000);
 
     return () => window.clearInterval(id);
   }, [featured.length]);
+
+  // Update image key when manually changing featured index
+  useEffect(() => {
+    setImageKey((k) => k + 1);
+  }, [activeFeaturedIndex]);
 
   const hasEvents = useMemo(() => upcoming.length > 0, [upcoming.length]);
 
@@ -87,7 +107,7 @@ export default function HomePage() {
 
   return (
     <div className="bg-background">
-      <div className="mx-auto max-w-5xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
+      <div className="mx-auto max-w-5xl px-4 pb-20 pt-10 sm:px-6">
         <section className="mb-4">
           <div className="flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="hidden text-3xl font-bold text-white sm:block sm:text-4xl">
@@ -110,51 +130,81 @@ export default function HomePage() {
             <div className="relative flex flex-col items-center gap-4">
               {/* Hero featured event - full width with glass overlay */}
               <div className="w-full">
-                <div className="relative w-full overflow-hidden rounded-2xl bg-black/40 shadow-lg backdrop-blur-md">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={
-                      featured[activeFeaturedIndex].image ||
-                      "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200"
-                    }
-                    alt={featured[activeFeaturedIndex].title}
-                    className="h-72 w-full object-cover sm:h-80"
-                    onError={(e) => {
-                      // Fallback to default image if error
-                      const target = e.target as HTMLImageElement;
-                      target.src = "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
-                    }}
-                  />
+                {featured[activeFeaturedIndex] && (
+                  <div 
+                    key={`hero-${featured[activeFeaturedIndex]._id}-${activeFeaturedIndex}-${imageKey}`} 
+                    className="relative w-full overflow-hidden rounded-2xl bg-black/40 shadow-lg backdrop-blur-md"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      key={`img-${featured[activeFeaturedIndex]._id}-${activeFeaturedIndex}-${imageKey}-${Date.now()}`}
+                      src={
+                        (() => {
+                          const currentEvent = featured[activeFeaturedIndex];
+                          if (!currentEvent) return "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
+                          const img = currentEvent.image || "";
+                          // Add cache busting for base64 images
+                          const imageSrc = (img && 
+                                          img.trim() && 
+                                          img !== "null" && 
+                                          img !== "undefined")
+                            ? img
+                            : "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
+                          
+                          // For base64 images, ensure they're unique
+                          if (imageSrc.startsWith("data:")) {
+                            return imageSrc;
+                          }
+                          
+                          return imageSrc;
+                        })()
+                      }
+                      alt={featured[activeFeaturedIndex]?.title || "Event"}
+                      className="h-72 w-full object-cover sm:h-80 transition-opacity duration-500"
+                      loading="eager"
+                      onLoad={() => {
+                        console.log("Image loaded for event:", featured[activeFeaturedIndex]?.title);
+                      }}
+                      onError={(e) => {
+                        console.error("Image error for event:", featured[activeFeaturedIndex]?.title);
+                        // Fallback to default image if error
+                        const target = e.target as HTMLImageElement;
+                        if (!target.src.includes("unsplash.com")) {
+                          target.src = "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200";
+                        }
+                      }}
+                    />
 
-                  {/* Date badge */}
-                  <div className="absolute right-4 top-4 min-w-[56px] rounded-xl bg-danger px-3 py-2 text-center shadow-md">
-                    <p className="text-[11px] font-semibold uppercase text-white">
-                      {new Date(
-                        featured[activeFeaturedIndex].date
-                      ).toLocaleString("default", { month: "short" })}
-                    </p>
-                    <p className="text-lg font-bold text-white leading-tight">
-                      {new Date(
-                        featured[activeFeaturedIndex].date
-                      ).getDate()}
-                    </p>
-                  </div>
+                    {/* Date badge */}
+                    <div className="absolute right-4 top-4 min-w-[56px] rounded-xl bg-danger px-3 py-2 text-center shadow-md">
+                      <p className="text-[11px] font-semibold uppercase text-white">
+                        {new Date(
+                          featured[activeFeaturedIndex].date
+                        ).toLocaleString("default", { month: "short" })}
+                      </p>
+                      <p className="text-lg font-bold text-white leading-tight">
+                        {new Date(
+                          featured[activeFeaturedIndex].date
+                        ).getDate()}
+                      </p>
+                    </div>
 
-                  {/* Bottom black glass overlay with event info */}
-                  <div className="absolute inset-x-0 bottom-0 bg-black/70 px-6 py-4 backdrop-blur-md">
-                    <h3 className="line-clamp-1 text-lg font-semibold text-white sm:text-xl">
-                      {featured[activeFeaturedIndex].title}
-                    </h3>
-                    <p className="mt-1 flex items-center gap-1 text-xs text-mutedLight sm:text-sm">
-                      <span className="text-accent">
-                        <FiMapPin size={14} />
-                      </span>
-                      <span className="line-clamp-1">
-                        {featured[activeFeaturedIndex].location}
-                      </span>
-                    </p>
+                    {/* Bottom black glass overlay with event info */}
+                    <div className="absolute inset-x-0 bottom-0 bg-black/70 px-6 py-4 backdrop-blur-md">
+                      <h3 className="line-clamp-1 text-lg font-semibold text-white sm:text-xl">
+                        {featured[activeFeaturedIndex].title}
+                      </h3>
+                      <p className="mt-1 flex items-center gap-1 text-xs text-mutedLight sm:text-sm">
+                        <span className="text-accent">
+                          <FiMapPin size={14} />
+                        </span>
+                        <span className="line-clamp-1">
+                          {featured[activeFeaturedIndex].location}
+                        </span>
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Slider dots */}
@@ -163,7 +213,10 @@ export default function HomePage() {
                   <button
                     key={event._id}
                     type="button"
-                    onClick={() => setActiveFeaturedIndex(index)}
+                    onClick={() => {
+                      setActiveFeaturedIndex(index);
+                      setImageKey((k) => k + 1); // Force image reload
+                    }}
                     className={`h-2 rounded-full transition-all ${
                       index === activeFeaturedIndex
                         ? "w-5 bg-white"
