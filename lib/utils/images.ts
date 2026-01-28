@@ -30,6 +30,29 @@ export function getEventImageUrl(event: Partial<Event> & Record<string, any>) {
     trimmed.startsWith("https://") ||
     trimmed.startsWith("data:")
   ) {
+    // If backend returns localhost/127 URLs, rewrite them to deployed API origin
+    if (trimmed.includes("localhost") || trimmed.includes("127.0.0.1")) {
+      try {
+        const url = new URL(trimmed);
+        const path = url.pathname || "";
+        const apiBase =
+          process.env.NEXT_PUBLIC_API_BASE_URL ||
+          "https://ticketlybackend-production.up.railway.app/api";
+        const origin = apiBase.replace(/\/api\/?$/, "");
+        return `${origin}${path}`;
+      } catch {
+        // Fallback: try to find /uploads
+        const uploadsIndex = trimmed.indexOf("/uploads");
+        if (uploadsIndex !== -1) {
+          const path = trimmed.substring(uploadsIndex);
+          const apiBase =
+            process.env.NEXT_PUBLIC_API_BASE_URL ||
+            "https://ticketlybackend-production.up.railway.app/api";
+          const origin = apiBase.replace(/\/api\/?$/, "");
+          return `${origin}${path}`;
+        }
+      }
+    }
     return trimmed;
   }
 
