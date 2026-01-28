@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
 interface QRScannerProps {
   visible: boolean;
@@ -16,167 +16,103 @@ declare const BarcodeDetector:
     });
 
 export default function QRScanner({ visible, onClose, onScan }: QRScannerProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
-
-    let stream: MediaStream | null = null;
-    let cancelled = false;
-    let scanInterval: number | null = null;
-
-    const startCamera = async () => {
-      try {
-        setError(null);
-        setHasPermission(null);
-
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setError("Camera not supported in this browser. Please enter ticket number manually.");
-          setHasPermission(false);
-          return;
-        }
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false
-        });
-
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-
-        setHasPermission(true);
-
-        if (typeof BarcodeDetector === "undefined") {
-          setError(
-            "QR scanning is not supported on this browser. Please type the ticket number manually."
-          );
-          return;
-        }
-
-        const detector = new BarcodeDetector({ formats: ["qr_code"] });
-        setScanning(true);
-
-        scanInterval = window.setInterval(async () => {
-          if (!videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            if (codes && codes.length > 0 && codes[0].rawValue) {
-              const value = String(codes[0].rawValue);
-              setScanning(false);
-              if (!cancelled) {
-                onScan(value);
-                handleClose();
-              }
-            }
-          } catch {
-            // ignore transient detection errors
-          }
-        }, 400);
-      } catch (err: any) {
-        console.error("QR scanner error:", err);
-        setError(
-          "Unable to access camera. Please allow camera permission or enter ticket number manually."
-        );
-        setHasPermission(false);
-      }
-    };
-
-    const handleClose = () => {
-      if (scanInterval !== null) {
-        window.clearInterval(scanInterval);
-      }
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-      }
-      cancelled = true;
-      setScanning(false);
-      onClose();
-    };
-
-    void startCamera();
-
-    return () => {
-      cancelled = true;
-      if (scanInterval !== null) {
-        window.clearInterval(scanInterval);
-      }
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-      }
-    };
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setError(null);
+    setScanning(true);
+    // Auto-open file picker when modal appears (user already clicked Scan QR)
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   }, [visible]);
 
   if (!visible) return null;
 
-  const handleManualClose = () => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setScanning(false);
+      return;
+    }
+
+    try {
+      if (typeof BarcodeDetector !== "undefined") {
+        const detector = new BarcodeDetector({ formats: ["qr_code"] });
+        const bitmap = await createImageBitmap(file);
+        const codes = await detector.detect(bitmap);
+        if (codes && codes.length > 0 && codes[0].rawValue) {
+          onScan(String(codes[0].rawValue));
+          setScanning(false);
+          onClose();
+          return;
+        }
+      }
+
+      setError(
+        "Could not read QR code from image. Please try again or enter ticket number manually."
+      );
+    } catch (err) {
+      console.error("QR scan error:", err);
+      setError(
+        "Failed to scan QR code. Please try again or enter ticket number manually."
+      );
+    } finally {
+      setScanning(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleClose = () => {
     setScanning(false);
+    setError(null);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div className="relative h-[80vh] w-[90vw] max-w-xl overflow-hidden rounded-2xl border border-[#374151] bg-black shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[#1F2937] bg-black/70 px-4 py-3">
-          <h2 className="text-sm font-semibold text-white">Scan QR code</h2>
-          <button
-            type="button"
-            onClick={handleManualClose}
-            className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20"
-          >
-            Close
-          </button>
-        </div>
+      <div className="relative w-[90vw] max-w-md rounded-2xl border border-[#374151] bg-[#020617] px-5 py-5 text-center shadow-2xl">
+        <h2 className="mb-2 text-base font-semibold text-white">Scan QR code</h2>
+        <p className="mb-4 text-xs text-mutedLight">
+          Your camera app will open. Point it at the ticket QR code and capture
+          a clear photo. We&apos;ll read the ticket number automatically.
+        </p>
 
-        <div className="relative flex h-full flex-col items-center justify-center bg-black">
-          {hasPermission === null && !error && (
-            <div className="flex flex-col items-center justify-center gap-2 text-center text-sm text-mutedLight">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-              <p>Requesting camera permission…</p>
-            </div>
-          )}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="mb-3 inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+        >
+          {scanning ? "Scanning…" : "Open camera"}
+        </button>
 
-          {hasPermission && !error && (
-            <>
-              <video
-                ref={videoRef}
-                className="h-full w-full object-cover"
-                playsInline
-                muted
-              />
-              {/* scanning frame */}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="h-56 w-56 rounded-2xl border-2 border-accent/80 bg-black/10 shadow-[0_0_30px_rgba(147,51,234,0.5)]" />
-              </div>
-              {scanning && (
-                <div className="pointer-events-none absolute bottom-6 rounded-full bg-accent px-4 py-2 text-xs font-semibold text-white shadow-lg">
-                  Scanning for QR code…
-                </div>
-              )}
-            </>
-          )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
-          {error && (
-            <div className="px-6 text-center text-sm text-danger">
-              <p className="mb-2 font-semibold">Unable to scan QR code</p>
-              <p className="text-xs text-mutedLight">{error}</p>
-            </div>
-          )}
-        </div>
+        {error ? (
+          <p className="mt-2 text-xs font-semibold text-danger">{error}</p>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={handleClose}
+          className="mt-4 inline-flex items-center justify-center rounded-xl border border-border bg-[#111827] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1F2937]"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
 }
-
 
