@@ -52,9 +52,10 @@ const apiClient: AxiosInstance = axios.create({
 });
 
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  (config: InternalAxiosRequestConfig & { skipAuth?: boolean }) => {
     const accessToken = getAccessToken();
-    if (accessToken && config.headers) {
+    // Only add auth header if skipAuth is not true
+    if (accessToken && config.headers && !config.skipAuth) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
     if (config.data instanceof FormData) {
@@ -62,12 +63,26 @@ apiClient.interceptors.request.use(
         delete config.headers["Content-Type"];
         delete config.headers["content-type"];
       }
+      
+      // Log FormData for debugging
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+        console.log("[API Request] ✅ FormData detected");
+        const entries = Array.from(config.data.entries());
+        entries.forEach(([key, value]) => {
+          if (value instanceof File) {
+            console.log(`[API Request]   - ${key}: File (${value.name}, ${value.type}, ${(value.size / 1024).toFixed(2)} KB)`);
+          } else {
+            console.log(`[API Request]   - ${key}: ${value}`);
+          }
+        });
+      }
     } else if (config.headers && config.data && !config.headers["Content-Type"] && !config.headers["content-type"]) {
       config.headers["Content-Type"] = "application/json";
     }
     
     // Log request for debugging (only in development)
-    if (process.env.NODE_ENV === "development") {
+    if (process.env.NODE_ENV === "development" && !(config.data instanceof FormData)) {
       console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
       if (config.data && typeof config.data === "object") {
         const dataCopy = { ...config.data };

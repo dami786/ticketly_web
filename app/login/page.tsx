@@ -185,7 +185,7 @@ function LoginPageInner() {
   };
 
   const baseContainer =
-    "flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background px-4";
+    "flex min-h-[calc(100vh-4rem)] items-center justify-center bg-gray-100 px-4";
 
   if (mode === "signup" && loginMethod === "email" && !otpSent) {
     return (
@@ -461,10 +461,10 @@ function LoginPageInner() {
 
   return (
     <div className={baseContainer}>
-      <div className="w-full max-w-md rounded-2xl bg-surface px-6 py-8 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl bg-white px-6 py-8 shadow-lg">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-white">ticketly</h1>
-          <p className="text-sm text-mutedLight">
+          <h1 className="mb-2 text-4xl font-bold text-gray-900">ticketly</h1>
+          <p className="text-sm text-gray-600">
             Login via Google or email to proceed.
           </p>
         </div>
@@ -483,7 +483,7 @@ function LoginPageInner() {
               setLoginMethod("email");
               setMode("login");
             }}
-            className="w-full rounded-xl border border-border bg-[#111827] px-4 py-2.5 text-sm font-semibold text-white"
+            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-100"
           >
             Login with email
           </button>
@@ -493,12 +493,12 @@ function LoginPageInner() {
               setLoginMethod("email");
               setMode("signup");
             }}
-            className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90"
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#B91C1C]"
           >
             Sign up with email
           </button>
         </div>
-        <div className="mb-4 flex flex-wrap justify-center gap-4 text-xs text-mutedLight">
+        <div className="mb-4 flex flex-wrap justify-center gap-4 text-xs text-gray-600">
           <span>Contact us</span>
           <span>Privacy policy</span>
           <span>Terms of service</span>

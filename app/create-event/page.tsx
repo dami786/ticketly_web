@@ -355,34 +355,34 @@ export default function CreateEventPage() {
   };
 
   return (
-    <div className="bg-background">
+    <div className="bg-white">
       <div className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Create event</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Create event</h1>
           <button
             type="button"
             onClick={() => router.back()}
-            className="text-sm text-mutedLight hover:text-white"
+            className="text-sm text-gray-500Light hover:text-gray-900"
           >
             Back
           </button>
         </div>
 
-        <div className="space-y-4 rounded-2xl bg-surface p-5 shadow-xl">
+        <div className="space-y-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-xl">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Name
               </label>
               <input
                 value={form.name}
                 onChange={(e) => update("name", e.target.value)}
                 placeholder="e.g. Fatima Ali"
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Email
               </label>
               <input
@@ -390,91 +390,91 @@ export default function CreateEventPage() {
                 onChange={(e) => update("email", e.target.value)}
                 placeholder="e.g. fatimaali@gmail.com"
                 type="email"
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Phone number
               </label>
               <input
                 value={form.phone}
                 onChange={(e) => update("phone", e.target.value)}
                 placeholder="+92…"
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Company name
               </label>
               <input
                 value={form.companyName}
                 onChange={(e) => update("companyName", e.target.value)}
                 placeholder="e.g. Paymo events"
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Event name
               </label>
               <input
                 value={form.eventName}
                 onChange={(e) => update("eventName", e.target.value)}
                 placeholder="e.g. Catcha cat"
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Event location
               </label>
               <input
                 value={form.eventLocation}
                 onChange={(e) => update("eventLocation", e.target.value)}
                 placeholder="e.g. LUMS"
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Event date
               </label>
               <input
                 type="date"
                 value={form.eventDate}
                 onChange={(e) => update("eventDate", e.target.value)}
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-white">
+              <label className="mb-1 block text-xs font-semibold text-gray-900">
                 Event city
               </label>
               <input
                 value={form.eventCity}
                 onChange={(e) => update("eventCity", e.target.value)}
                 placeholder="Enter city name"
-                className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-white">
+            <label className="mb-1 block text-xs font-semibold text-gray-900">
               Event category
             </label>
             <select
               value={form.eventCategory}
               onChange={(e) => update("eventCategory", e.target.value)}
-              className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">Select category</option>
               {CATEGORIES.map((cat) => (
@@ -486,12 +486,12 @@ export default function CreateEventPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-white">
+            <label className="mb-1 block text-xs font-semibold text-gray-900">
               Event image (optional)
             </label>
             {imagePreview ? (
               <div className="relative">
-                <div className="relative overflow-hidden rounded-xl border border-border">
+                <div className="relative overflow-hidden rounded-xl border border-gray-200">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={imagePreview}
@@ -501,7 +501,7 @@ export default function CreateEventPage() {
                   <button
                     type="button"
                     onClick={handleRemoveImage}
-                    className="absolute top-2 right-2 rounded-full bg-black/60 p-2 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+                    className="absolute top-2 right-2 rounded-full bg-black/60 p-2 text-gray-900 backdrop-blur-sm transition-colors hover:bg-black/80"
                     aria-label="Remove image"
                   >
                     <FiX className="h-4 w-4" />
@@ -510,7 +510,7 @@ export default function CreateEventPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="mt-2 w-full rounded-xl border border-border bg-[#111827] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-accent hover:bg-accent/10"
+                  className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-900 transition-colors hover:border-accent hover:bg-primary/10"
                 >
                   Change image
                 </button>
@@ -527,7 +527,7 @@ export default function CreateEventPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-[#111827] px-4 py-8 text-sm font-semibold text-white transition-all hover:border-accent hover:bg-accent/5"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-sm font-semibold text-gray-900 transition-all hover:border-accent hover:bg-primary/5"
                 >
                   <FiImage className="h-5 w-5" />
                   <span>Select image from gallery</span>
@@ -539,7 +539,7 @@ export default function CreateEventPage() {
                   onChange={handleImageSelect}
                   className="hidden"
                 />
-                <p className="mt-1 text-xs text-mutedLight">
+                <p className="mt-1 text-xs text-gray-500Light">
                   Supported formats: JPG, PNG, WebP (Max 5MB)
                 </p>
               </div>
@@ -547,7 +547,7 @@ export default function CreateEventPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-white">
+            <label className="mb-1 block text-xs font-semibold text-gray-900">
               What is your event about
             </label>
             <textarea
@@ -555,7 +555,7 @@ export default function CreateEventPage() {
               onChange={(e) => update("description", e.target.value)}
               rows={5}
               placeholder="Enter a description…"
-              className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
@@ -563,7 +563,7 @@ export default function CreateEventPage() {
             type="button"
             disabled={loading}
             onClick={handleSubmit}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-primary/90 disabled:opacity-60"
           >
             {loading ? "Creating event…" : "Create event"}
           </button>
