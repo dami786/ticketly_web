@@ -40,13 +40,21 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <div className="flex min-h-screen flex-col">
           {/* Ensure auth state persists across refresh by hydrating from stored tokens */}
           <AuthInitializer />
-          <header className="sticky top-0 z-30 border-b border-gray-200 bg-white sm:block hidden">
+          <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur-sm shadow-sm sm:block hidden">
             <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
-              <Link href="/" className="flex items-center text-xl font-bold tracking-tight text-gray-900 hover:text-primary transition-colors">
-                <span>ticketly</span>
+              <Link 
+                href="/" 
+                className="flex items-center text-xl font-bold tracking-tight text-gray-900 hover:text-primary transition-all duration-200 group"
+              >
+                <span className="relative">
+                  <span className="bg-gradient-to-r from-primary to-[#B91C1C] bg-clip-text text-transparent group-hover:from-[#B91C1C] group-hover:to-primary transition-all duration-300">
+                    ticketly
+                  </span>
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-0.5 bg-primary group-hover:w-full transition-all duration-300"></span>
+                </span>
               </Link>
               {/* Desktop navigation (hidden on mobile to mimic mobile app layout) */}
-              <nav className="hidden items-center gap-2 text-sm text-gray-600 sm:flex">
+              <nav className="hidden items-center gap-1.5 text-sm text-gray-600 sm:flex">
                 {navItems.map((item) => {
                   const isActive =
                     item.href === "/"
@@ -57,16 +65,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center gap-1 rounded-full px-3 py-1.5 transition ${
+                      className={`relative flex items-center gap-1.5 rounded-lg px-4 py-2 transition-all duration-200 ${
                         isActive
-                          ? "bg-primary text-white"
-                          : "hover:bg-gray-100 hover:text-gray-900"
+                          ? "bg-primary text-white shadow-md shadow-primary/20 scale-105"
+                          : "hover:bg-gray-100 hover:text-gray-900 hover:scale-105"
                       }`}
                     >
-                      <span>
-                        <item.icon size={16} />
+                      <span className={`transition-transform duration-200 ${isActive ? 'scale-110' : ''}`}>
+                        <item.icon size={18} />
                       </span>
-                      <span>{item.label}</span>
+                      <span className="font-medium">{item.label}</span>
+                      {isActive && (
+                        <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-white rounded-full"></span>
+                      )}
                     </Link>
                   );
                 })}
@@ -80,7 +91,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
           {/* Mobile bottom tab bar - as per Mobile App Design Guide */}
           <nav 
-            className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-center border-t border-gray-200 bg-white text-gray-600 shadow-[0_-2px_8px_rgba(0,0,0,0.05)] sm:hidden"
+            className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-center border-t border-gray-200 bg-white/95 backdrop-blur-sm text-gray-600 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] sm:hidden"
             style={{ 
               height: '56px',
               paddingTop: '4px',
@@ -91,46 +102,78 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center justify-center gap-12 h-full w-full max-w-md mx-auto">
               <Link
                 href="/"
-                className={`flex flex-col items-center justify-center h-full transition-colors ${
+                className={`relative flex flex-col items-center justify-center h-full transition-all duration-200 ${
                   pathname === "/"
                     ? "text-primary"
-                    : "text-gray-600"
+                    : "text-gray-600 active:opacity-70"
                 }`}
               >
-                <FiHome size={24} className="transition-transform" style={{ transform: pathname === "/" ? "scale(1.1)" : "scale(1)" }} />
+                <div className={`relative transition-all duration-200 ${pathname === "/" ? "scale-110" : "scale-100"}`}>
+                  <FiHome size={24} />
+                  {pathname === "/" && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                  )}
+                </div>
+                {pathname === "/" && (
+                  <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full"></span>
+                )}
               </Link>
 
               <Link
                 href="/explore"
-                className={`flex flex-col items-center justify-center h-full transition-colors ${
+                className={`relative flex flex-col items-center justify-center h-full transition-all duration-200 ${
                   pathname.startsWith("/explore")
                     ? "text-primary"
-                    : "text-gray-600"
+                    : "text-gray-600 active:opacity-70"
                 }`}
               >
-                <FiSearch size={24} className="transition-transform" style={{ transform: pathname.startsWith("/explore") ? "scale(1.1)" : "scale(1)" }} />
+                <div className={`relative transition-all duration-200 ${pathname.startsWith("/explore") ? "scale-110" : "scale-100"}`}>
+                  <FiCompass size={24} />
+                  {pathname.startsWith("/explore") && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                  )}
+                </div>
+                {pathname.startsWith("/explore") && (
+                  <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full"></span>
+                )}
               </Link>
 
               <Link
                 href="/create-event"
-                className={`flex flex-col items-center justify-center h-full transition-colors ${
+                className={`relative flex flex-col items-center justify-center h-full transition-all duration-200 ${
                   pathname.startsWith("/create-event")
                     ? "text-primary"
-                    : "text-gray-600"
+                    : "text-gray-600 active:opacity-70"
                 }`}
               >
-                <FiPlusCircle size={24} className="transition-transform" style={{ transform: pathname.startsWith("/create-event") ? "scale(1.1)" : "scale(1)" }} />
+                <div className={`relative transition-all duration-200 ${pathname.startsWith("/create-event") ? "scale-110" : "scale-100"}`}>
+                  <FiPlusCircle size={24} />
+                  {pathname.startsWith("/create-event") && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                  )}
+                </div>
+                {pathname.startsWith("/create-event") && (
+                  <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full"></span>
+                )}
               </Link>
 
               <Link
                 href="/profile"
-                className={`flex flex-col items-center justify-center h-full transition-colors ${
+                className={`relative flex flex-col items-center justify-center h-full transition-all duration-200 ${
                   pathname.startsWith("/profile")
                     ? "text-primary"
-                    : "text-gray-600"
+                    : "text-gray-600 active:opacity-70"
                 }`}
               >
-                <FiUser size={24} className="transition-transform" style={{ transform: pathname.startsWith("/profile") ? "scale(1.1)" : "scale(1)" }} />
+                <div className={`relative transition-all duration-200 ${pathname.startsWith("/profile") ? "scale-110" : "scale-100"}`}>
+                  <FiUser size={24} />
+                  {pathname.startsWith("/profile") && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                  )}
+                </div>
+                {pathname.startsWith("/profile") && (
+                  <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full"></span>
+                )}
               </Link>
             </div>
           </nav>

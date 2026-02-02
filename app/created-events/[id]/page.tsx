@@ -2,22 +2,41 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FiCamera } from "react-icons/fi";
+import {
+  FiArrowLeft,
+  FiEdit,
+  FiCalendar,
+  FiMapPin,
+  FiUser,
+  FiDollarSign,
+  FiCheck,
+  FiX,
+  FiMail,
+  FiPhone,
+  FiClock,
+  FiCamera,
+  FiSave,
+  FiAlertCircle,
+  FiHash
+} from "react-icons/fi";
 import QRScanner from "../../../components/QRScanner";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { ticketsAPI } from "../../../lib/api/tickets";
 import { useToast } from "../../../lib/hooks/useToast";
+import { getEventImageUrl, FALLBACK_IMAGE } from "../../../lib/utils/images";
 
 type TicketStatus =
   | "all"
   | "pending_payment"
-  | "payment_submitted"
+  | "payment_in_review"
   | "confirmed"
   | "used"
   | "cancelled";
 
 interface Ticket {
   id: string;
+  _id?: string;
+  accessKey?: string;
   user?: {
     _id: string;
     fullName: string;
@@ -33,6 +52,124 @@ interface Ticket {
   updatedAt: string;
 }
 
+const tabs: { key: TicketStatus; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "pending_payment", label: "Pending" },
+  { key: "payment_in_review", label: "In Review" },
+  { key: "confirmed", label: "Submitted" },
+  { key: "used", label: "Used" },
+  { key: "cancelled", label: "Cancelled" }
+];
+
+const getStatusInfo = (status: string) => {
+  switch (status) {
+    case "confirmed":
+      return {
+        label: "SUBMITTED",
+        icon: "check-circle",
+        iconColor: "#10B981",
+        className: "confirmed",
+        badgeClass: "bg-[#10B981]",
+        borderClass: "border-[#10B981]/50",
+        bgClass: "bg-[#10B981]/20",
+        textColor: "#10B981"
+      };
+    case "pending_payment":
+      return {
+        label: "PENDING",
+        icon: "clock",
+        iconColor: "#F59E0B",
+        className: "pending",
+        badgeClass: "bg-[#F59E0B]",
+        borderClass: "border-[#F59E0B]/50",
+        bgClass: "bg-[#F59E0B]/20",
+        textColor: "#F59E0B"
+      };
+    case "payment_in_review":
+    case "payment_submitted":
+      return {
+        label: "IN REVIEW",
+        icon: "clock",
+        iconColor: "#3B82F6",
+        className: "in-review",
+        badgeClass: "bg-[#3B82F6]",
+        borderClass: "border-[#3B82F6]/50",
+        bgClass: "bg-[#3B82F6]/20",
+        textColor: "#3B82F6"
+      };
+    case "used":
+      return {
+        label: "USED",
+        icon: "check",
+        iconColor: "#6B7280",
+        className: "used",
+        badgeClass: "bg-[#6B7280]",
+        borderClass: "border-[#6B7280]/50",
+        bgClass: "bg-[#6B7280]/20",
+        textColor: "#6B7280"
+      };
+    case "cancelled":
+      return {
+        label: "CANCELLED",
+        icon: "x",
+        iconColor: "#EF4444",
+        className: "cancelled",
+        badgeClass: "bg-[#EF4444]",
+        borderClass: "border-[#EF4444]/50",
+        bgClass: "bg-[#EF4444]/20",
+        textColor: "#EF4444"
+      };
+    default:
+      return {
+        label: status.toUpperCase(),
+        icon: "help-circle",
+        iconColor: "#9CA3AF",
+        className: "default",
+        badgeClass: "bg-[#9CA3AF]",
+        borderClass: "border-[#9CA3AF]/50",
+        bgClass: "bg-[#9CA3AF]/20",
+        textColor: "#9CA3AF"
+      };
+  }
+};
+
+const getStatusIcon = (iconName: string) => {
+  switch (iconName) {
+    case "check-circle":
+      return FiCheck;
+    case "clock":
+      return FiClock;
+    case "check":
+      return FiCheck;
+    case "x":
+      return FiX;
+    default:
+      return FiAlertCircle;
+  }
+};
+
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+};
+
+const formatEventDate = (dateString: string, time?: string) => {
+  const date = new Date(dateString);
+  const dateStr = date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  });
+  return time ? `${dateStr}, ${time}` : dateStr;
+};
+
 export default function CreatedEventDetailsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -46,9 +183,7 @@ export default function CreatedEventDetailsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [ticketNumber, setTicketNumber] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState<"used" | "cancelled" | null>(
-    null
-  );
+  const [selectedStatus, setSelectedStatus] = useState<"used" | "cancelled" | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const { success, error: showError } = useToast();
@@ -97,7 +232,6 @@ export default function CreatedEventDetailsPage() {
         setTickets(response.tickets);
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error("Failed to load tickets", err);
     } finally {
       setLoadingTickets(false);
@@ -143,17 +277,14 @@ export default function CreatedEventDetailsPage() {
       });
 
       if (response.success) {
-        // Close modal + reset form
         setUpdateModalOpen(false);
         setTicketNumber("");
         setSelectedStatus(null);
         setUpdateError(null);
-
-        // Refresh tickets to reflect changes
         await loadTickets();
-
         success(response.message || "Ticket status updated successfully.");
       } else {
+        setUpdateError(response.message || "Failed to update ticket status.");
         showError(response.message || "Failed to update ticket status.");
       }
     } catch (err: any) {
@@ -173,77 +304,49 @@ export default function CreatedEventDetailsPage() {
     setQrScannerOpen(true);
   };
 
-  const filteredTickets = tickets.filter((ticket: Ticket) =>
-    activeTab === "all" ? true : ticket.status === activeTab
-  );
-
-  const getStatusInfo = (status: string) => {
-    switch (status) {
-      case "confirmed":
-        return {
-          badgeLabel: "Confirmed",
-          badgeColor: "bg-[#10B981]",
-          borderClass: "border-[#10B981]/50",
-          bgClass: "bg-[#10B981]/20"
-        };
-      case "pending_payment":
-        return {
-          badgeLabel: "Pending payment",
-          badgeColor: "bg-[#F59E0B]",
-          borderClass: "border-[#F59E0B]/50",
-          bgClass: "bg-[#F59E0B]/20"
-        };
-      case "payment_submitted":
-        return {
-          badgeLabel: "Payment submitted",
-          badgeColor: "bg-[#3B82F6]",
-          borderClass: "border-[#3B82F6]/50",
-          bgClass: "bg-[#3B82F6]/20"
-        };
-      case "used":
-        return {
-          badgeLabel: "Used",
-          badgeColor: "bg-[#6B7280]",
-          borderClass: "border-[#6B7280]/50",
-          bgClass: "bg-[#6B7280]/20"
-        };
-      case "cancelled":
-        return {
-          badgeLabel: "Cancelled",
-          badgeColor: "bg-[#EF4444]",
-          borderClass: "border-[#EF4444]/50",
-          bgClass: "bg-[#EF4444]/20"
-        };
-      default:
-        return {
-          badgeLabel: status,
-          badgeColor: "bg-[#9CA3AF]",
-          borderClass: "border-[#9CA3AF]/50",
-          bgClass: "bg-[#9CA3AF]/20"
-        };
+  const filteredTickets = tickets.filter((ticket: Ticket) => {
+    if (activeTab === "all") return true;
+    // Map confirmed to payment_in_review for filtering if needed
+    if (activeTab === "payment_in_review") {
+      return ticket.status === "payment_in_review" || ticket.status === "payment_submitted";
     }
+    return ticket.status === activeTab;
+  });
+
+  const getStatusCount = (key: TicketStatus) => {
+    if (key === "all") return tickets.length;
+    if (key === "payment_in_review") {
+      return tickets.filter(
+        (t: Ticket) => t.status === "payment_in_review" || t.status === "payment_submitted"
+      ).length;
+    }
+    return tickets.filter((t: Ticket) => t.status === key).length;
   };
 
-  const tabs: { key: TicketStatus; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "pending_payment", label: "Pending" },
-    { key: "payment_submitted", label: "Submitted" },
-    { key: "confirmed", label: "Confirmed" },
-    { key: "used", label: "Used" },
-    { key: "cancelled", label: "Cancelled" }
-  ];
+  const getTicketPrice = () => {
+    if (!event) return "Free";
+    const price = (event as any).price?.price;
+    const currency = (event as any).price?.currency;
+    const ticketPrice = (event as any).ticketPrice;
 
-  const statusCount = (key: TicketStatus) =>
-    key === "all"
-      ? tickets.length
-      : tickets.filter((t: Ticket) => t.status === key).length;
+    if (price === "free" || currency === null || !currency) {
+      return "Free";
+    }
+    if (currency && price) {
+      return `${currency} ${price}`;
+    }
+    if (ticketPrice) {
+      return `PKR ${ticketPrice}`;
+    }
+    return "Free";
+  };
 
   if ((loading && !event) || (!eventId && !error)) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-background">
+      <div className="flex min-h-[60vh] items-center justify-center bg-white">
         <div className="space-y-3 text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent mx-auto" />
-          <p className="text-sm text-mutedLight">Loading event…</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
+          <p className="text-sm text-gray-600">Loading event…</p>
         </div>
       </div>
     );
@@ -251,14 +354,12 @@ export default function CreatedEventDetailsPage() {
 
   if (error || !event) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-background px-4">
-        <p className="mb-4 text-base font-semibold text-danger">
-          {error ?? "Event not found."}
-        </p>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-white px-4">
+        <p className="mb-4 text-base font-semibold text-[#EF4444]">{error ?? "Event not found."}</p>
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-[#B91C1C]"
         >
           Go back
         </button>
@@ -266,290 +367,721 @@ export default function CreatedEventDetailsPage() {
     );
   }
 
+  const eventImageUrl = getEventImageUrl(event);
+
   return (
-    <div className="bg-background">
-      <div className="mx-auto max-w-4xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="bg-white min-h-screen">
+      {/* Mobile Layout */}
+      <div className="sm:hidden">
+        {/* Header Image Section */}
+        <div className="relative w-full h-[300px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={eventImageUrl || FALLBACK_IMAGE}
+            alt={event.title}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.src = FALLBACK_IMAGE;
+            }}
+          />
+
+          {/* Back Button */}
           <button
             type="button"
             onClick={() => router.back()}
-            className="text-sm text-mutedLight hover:text-white"
+            className="absolute top-[50px] left-5 z-10 w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-md"
+            style={{ paddingTop: 'calc(50px + env(safe-area-inset-top))' }}
           >
-            ← Back
+            <FiArrowLeft size={20} className="text-gray-900" />
           </button>
+
+          {/* Edit Button (Top Right) */}
           <button
             type="button"
-            onClick={() => void onRefresh()}
-            disabled={refreshing || loading}
-            className="rounded-full bg-surface px-3 py-2 text-xs text-mutedLight hover:text-white disabled:opacity-60"
+            onClick={() => router.push(`/edit-event/${eventId}`)}
+            className="absolute top-[50px] right-5 z-10 w-10 h-10 rounded-full bg-primary flex items-center justify-center shadow-md"
+            style={{ paddingTop: 'calc(50px + env(safe-area-inset-top))' }}
           >
-            Refresh
+            <FiEdit size={20} className="text-white" />
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-2xl bg-surface shadow-xl">
-          <div className="h-64 w-full bg-[#111827]">
-            {event.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={event.image}
-                alt={event.title}
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  // Hide image on error, show background
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <span className="text-sm text-mutedLight">No image</span>
+        {/* Event Info Card (Sticky) */}
+        <div className="bg-white rounded-t-3xl -mt-5 p-5 border-t border-gray-200 sticky top-0 z-5">
+          {/* Title, Status Badge & Edit Button Row */}
+          <div className="flex flex-row justify-between items-start mb-6">
+            <h1 className="text-gray-900 text-2xl font-bold flex-1 mr-3">{event.title}</h1>
+            <div className="flex flex-row items-center gap-2">
+              {/* Status Badge */}
+              <div className="bg-gray-100 py-1.5 px-3 rounded-xl">
+                <span className="text-gray-700 text-xs font-semibold">
+                  {event.status === "approved"
+                    ? "Approved"
+                    : event.status === "pending"
+                    ? "Pending"
+                    : "Draft"}
+                </span>
+              </div>
+              {/* Edit Button */}
+              <button
+                type="button"
+                onClick={() => router.push(`/edit-event/${eventId}`)}
+                className="bg-primary py-2 px-3 rounded-xl flex flex-row items-center"
+              >
+                <FiEdit size={16} className="text-white mr-1" />
+                <span className="text-white text-xs font-semibold">Edit</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Event Date & Time */}
+          <div className="flex flex-row mb-5 items-start">
+            <FiCalendar size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-gray-900 text-sm font-semibold mb-1">Event Date & Time</div>
+              <div className="text-gray-700 text-sm mb-0.5">
+                {formatEventDate(event.date, event.time)}
+              </div>
+            </div>
+          </div>
+
+          {/* Location (Optional) */}
+          {event.location && (
+            <div className="flex flex-row mb-5 items-start">
+              <FiMapPin size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+              <div className="flex-1">
+                <div className="text-gray-900 text-sm font-semibold mb-1">Location</div>
+                <div className="text-gray-700 text-sm mb-0.5">{event.location}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Description (Optional) */}
+          {event.description && (
+            <div className="mb-5">
+              <div className="text-gray-900 text-sm font-semibold mb-1">Description</div>
+              <div className="text-gray-700 text-sm leading-6">{event.description}</div>
+            </div>
+          )}
+
+          {/* Gender (Optional) */}
+          {event.gender && (
+            <div className="flex flex-row mb-5 items-start">
+              <FiUser size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+              <div className="flex-1">
+                <div className="text-gray-900 text-sm font-semibold mb-1">Gender</div>
+                <div className="text-gray-700 text-sm mb-0.5 capitalize">{event.gender}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Ticket Price */}
+          <div className="flex flex-row mb-5 items-start">
+            <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-gray-900 text-sm font-semibold mb-1">Ticket Price</div>
+              <div className="text-gray-700 text-sm mb-0.5">{getTicketPrice()}</div>
+            </div>
+          </div>
+
+          {/* Total Tickets Sold */}
+          <div className="flex flex-row items-start">
+            <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-gray-900 text-sm font-semibold mb-1">Total Tickets</div>
+              <div className="text-gray-700 text-sm mb-0.5">
+                {tickets.length} {tickets.length === 1 ? "ticket" : "tickets"} sold
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs Section (Sticky) */}
+        <div className="px-3 pt-5 pb-4 bg-white sticky top-0 z-4 border-b border-gray-200">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key;
+              const count = getStatusCount(tab.key);
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`py-2.5 px-4 rounded-xl flex flex-row items-center gap-2 whitespace-nowrap ${
+                    isActive ? "bg-primary" : "bg-gray-100"
+                  }`}
+                >
+                  <span
+                    className={`text-xs font-semibold ${
+                      isActive ? "text-white" : "text-gray-600"
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                  <div
+                    className={`px-2 py-0.5 rounded-full ${
+                      isActive ? "bg-white/20" : "bg-[#374151]"
+                    }`}
+                  >
+                    <span
+                      className={`text-[10px] font-bold ${
+                        isActive ? "text-white" : "text-gray-600"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Update Ticket Status Button */}
+        <div className="px-3 mt-4 mb-2">
+          <button
+            type="button"
+            onClick={() => setUpdateModalOpen(true)}
+            className="bg-primary py-4 px-5 rounded-xl flex flex-row items-center justify-center w-full"
+          >
+            <FiEdit size={20} className="text-white mr-2" />
+            <span className="text-white text-base font-semibold">Update Ticket Status by Ticket #</span>
+          </button>
+        </div>
+
+        {/* Tickets List */}
+        <div className="px-3 mt-2" style={{ paddingBottom: 'calc(100px + env(safe-area-inset-bottom))' }}>
+          {loadingTickets ? (
+            <div className="py-10 flex items-center justify-center flex-col">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-gray-700 text-sm mt-4">Loading tickets...</p>
+            </div>
+          ) : filteredTickets.length === 0 ? (
+            <div className="py-10 flex items-center justify-center flex-col">
+              <div className="text-5xl text-[#6B7280] mb-3">🎫</div>
+              <p className="text-[#6B7280] text-sm mt-4">
+                {activeTab === "all"
+                  ? "No tickets found"
+                  : `No ${tabs.find((t) => t.key === activeTab)?.label.toLowerCase()} tickets`}
+              </p>
+            </div>
+          ) : (
+            filteredTickets.map((ticket) => {
+              const statusInfo = getStatusInfo(ticket.status);
+              const StatusIcon = getStatusIcon(statusInfo.icon);
+              const displayName =
+                ticket.user?.fullName ?? ticket.username ?? "Unknown User";
+              const displayEmail = ticket.user?.email ?? ticket.email ?? "No email";
+              const displayPhone = ticket.phone || "No phone";
+
+              return (
+                <div
+                  key={ticket.id || ticket._id}
+                  className={`rounded-xl border-2 p-4 mb-3 ${statusInfo.bgClass} ${statusInfo.borderClass}`}
+                >
+                  {/* Ticket Header */}
+                  <div className="flex flex-row items-start justify-between mb-3">
+                    <div className="flex flex-row items-center flex-1">
+                      <StatusIcon size={20} className="mr-2" style={{ color: statusInfo.iconColor }} />
+                      <span className="text-gray-900 text-sm font-bold flex-1">{displayName}</span>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full ${statusInfo.badgeClass}`}>
+                      <span className="text-white text-[10px] font-bold uppercase">
+                        {statusInfo.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Ticket Details */}
+                  <div className="flex flex-col">
+                    {/* Access Key */}
+                    {ticket.accessKey && (
+                      <div className="flex flex-row items-center mb-2">
+                        <FiHash size={14} className="text-[#9CA3AF] mr-2" />
+                        <span className="text-gray-700 text-[10px] font-mono flex-1 truncate">
+                          {ticket.accessKey}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Email */}
+                    <div className="flex flex-row items-center mb-2">
+                      <FiMail size={14} className="text-[#6B7280] mr-2" />
+                      <span className="text-gray-700 text-xs flex-1 truncate">{displayEmail}</span>
+                    </div>
+
+                    {/* Phone */}
+                    <div className="flex flex-row items-center mb-2">
+                      <FiPhone size={14} className="text-[#6B7280] mr-2" />
+                      <span className="text-gray-700 text-xs">{displayPhone}</span>
+                    </div>
+
+                    {/* Date */}
+                    {ticket.createdAt && (
+                      <div className="flex flex-row items-center mb-2">
+                        <FiCalendar size={14} className="text-[#9CA3AF] mr-2" />
+                        <span className="text-gray-600 text-[10px]">{formatDate(ticket.createdAt)}</span>
+                      </div>
+                    )}
+
+                    {/* Username */}
+                    {ticket.user?.username && (
+                      <div className="flex flex-row items-center mt-2">
+                        <FiUser size={14} className="text-[#9CA3AF] mr-2" />
+                        <span className="text-gray-600 text-[10px]">@{ticket.user.username}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden sm:block">
+        <div className="mx-auto max-w-5xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
+          {/* Header Image Section */}
+          <div className="relative w-full h-[300px] rounded-2xl overflow-hidden mb-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={eventImageUrl || FALLBACK_IMAGE}
+              alt={event.title}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = FALLBACK_IMAGE;
+              }}
+            />
+
+            {/* Back Button */}
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="absolute top-5 left-5 z-10 w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-md"
+            >
+              <FiArrowLeft size={20} className="text-gray-900" />
+            </button>
+
+            {/* Edit Button (Top Right) */}
+            <button
+              type="button"
+              onClick={() => router.push(`/edit-event/${eventId}`)}
+              className="absolute top-5 right-5 z-10 w-10 h-10 rounded-full bg-primary flex items-center justify-center shadow-md"
+            >
+              <FiEdit size={20} className="text-white" />
+            </button>
+          </div>
+
+          {/* Event Info Card */}
+          <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm mb-4">
+            {/* Title, Status Badge & Edit Button Row */}
+            <div className="flex flex-row justify-between items-start mb-6">
+              <h1 className="text-gray-900 text-2xl font-bold flex-1 mr-3">{event.title}</h1>
+              <div className="flex flex-row items-center gap-2">
+                {/* Status Badge */}
+                <div className="bg-gray-100 py-1.5 px-3 rounded-xl">
+                  <span className="text-gray-700 text-xs font-semibold">
+                    {event.status === "approved"
+                      ? "Approved"
+                      : event.status === "pending"
+                      ? "Pending"
+                      : "Draft"}
+                  </span>
+                </div>
+                {/* Edit Button */}
+                <button
+                  type="button"
+                  onClick={() => router.push(`/edit-event/${eventId}`)}
+                  className="bg-primary py-2 px-3 rounded-xl flex flex-row items-center"
+                >
+                  <FiEdit size={16} className="text-white mr-1" />
+                  <span className="text-white text-xs font-semibold">Edit</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Event Details Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Event Date & Time */}
+              <div className="flex flex-row items-start">
+                <FiCalendar size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-gray-900 text-sm font-semibold mb-1">Event Date & Time</div>
+                  <div className="text-gray-700 text-sm mb-0.5">
+                    {formatEventDate(event.date, event.time)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Location (Optional) */}
+              {event.location && (
+                <div className="flex flex-row items-start">
+                  <FiMapPin size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-gray-900 text-sm font-semibold mb-1">Location</div>
+                    <div className="text-gray-700 text-sm mb-0.5">{event.location}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Gender (Optional) */}
+              {event.gender && (
+                <div className="flex flex-row items-start">
+                  <FiUser size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-gray-900 text-sm font-semibold mb-1">Gender</div>
+                    <div className="text-gray-700 text-sm mb-0.5 capitalize">{event.gender}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Ticket Price */}
+              <div className="flex flex-row items-start">
+                <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-gray-900 text-sm font-semibold mb-1">Ticket Price</div>
+                  <div className="text-gray-700 text-sm mb-0.5">{getTicketPrice()}</div>
+                </div>
+              </div>
+
+              {/* Total Tickets Sold */}
+              <div className="flex flex-row items-start">
+                <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-gray-900 text-sm font-semibold mb-1">Total Tickets</div>
+                  <div className="text-gray-700 text-sm mb-0.5">
+                    {tickets.length} {tickets.length === 1 ? "ticket" : "tickets"} sold
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Description (Optional) */}
+            {event.description && (
+              <div className="mt-4">
+                <div className="text-gray-900 text-sm font-semibold mb-1">Description</div>
+                <div className="text-gray-700 text-sm leading-6">{event.description}</div>
               </div>
             )}
           </div>
 
-          <div className="space-y-4 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="flex-1 text-2xl font-bold text-white">
-                {event.title}
-              </h1>
-              <span className="rounded-xl bg-[#374151] px-3 py-1.5 text-xs font-semibold text-[#D1D5DB]">
-                {event.status === "approved"
-                  ? "Approved"
-                  : event.status === "pending"
-                  ? "Pending"
-                  : "Draft"}
-              </span>
-            </div>
-
-            <div className="space-y-3 text-sm text-[#D1D5DB]">
-              <div>
-                <div className="text-xs font-semibold text-white">
-                  Date & time
-                </div>
-                <div>
-                  {new Date(event.date).toLocaleDateString("en-US", {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric"
-                  })}{" "}
-                  {event.time && `, ${event.time}`}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-white">
-                  Location
-                </div>
-                <div>{event.location}</div>
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-white">
-                  Tickets sold
-                </div>
-                <div>{tickets.length} total</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-[#1F2937] bg-background px-5 py-3">
-            <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
+          {/* Tabs Section */}
+          <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm mb-4">
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
               {tabs.map((tab) => {
-                const active = activeTab === tab.key;
-                const count = statusCount(tab.key);
+                const isActive = activeTab === tab.key;
+                const count = getStatusCount(tab.key);
                 return (
                   <button
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 ${
-                      active ? "bg-accent text-white" : "bg-surface text-mutedLight"
+                    className={`py-2.5 px-4 rounded-xl flex flex-row items-center gap-2 whitespace-nowrap ${
+                      isActive ? "bg-primary" : "bg-gray-100"
                     }`}
                   >
-                    <span className="font-semibold">{tab.label}</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        active ? "bg-white/20 text-white" : "bg-[#374151] text-mutedLight"
+                      className={`text-xs font-semibold ${
+                        isActive ? "text-white" : "text-gray-600"
                       }`}
                     >
-                      {count}
+                      {tab.label}
                     </span>
+                    <div
+                      className={`px-2 py-0.5 rounded-full ${
+                        isActive ? "bg-white/20" : "bg-[#374151]"
+                      }`}
+                    >
+                      <span
+                        className={`text-[10px] font-bold ${
+                          isActive ? "text-white" : "text-gray-600"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </div>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="space-y-3 px-5 pb-5 pt-3">
+          {/* Update Ticket Status Button */}
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => setUpdateModalOpen(true)}
+              className="bg-primary py-4 px-5 rounded-xl flex flex-row items-center justify-center w-full"
+            >
+              <FiEdit size={20} className="text-white mr-2" />
+              <span className="text-white text-base font-semibold">Update Ticket Status by Ticket #</span>
+            </button>
+          </div>
+
+          {/* Tickets List */}
+          <div className="space-y-3">
             {loadingTickets ? (
-              <div className="py-8 text-center text-sm text-mutedLight">
-                Loading tickets…
+              <div className="py-10 flex items-center justify-center flex-col">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <p className="text-gray-700 text-sm mt-4">Loading tickets...</p>
               </div>
             ) : filteredTickets.length === 0 ? (
-              <div className="py-8 text-center text-sm text-mutedLight">
-                {activeTab === "all"
-                  ? "No tickets found."
-                  : `No ${tabs.find((t) => t.key === activeTab)?.label.toLowerCase()} tickets.`}
+              <div className="py-10 flex items-center justify-center flex-col">
+                <FiDollarSign size={48} className="text-[#6B7280]" />
+                <p className="text-[#6B7280] text-sm mt-4">
+                  {activeTab === "all"
+                    ? "No tickets found"
+                    : `No ${tabs.find((t) => t.key === activeTab)?.label.toLowerCase()} tickets`}
+                </p>
               </div>
             ) : (
               filteredTickets.map((ticket) => {
                 const statusInfo = getStatusInfo(ticket.status);
+                const StatusIcon = getStatusIcon(statusInfo.icon);
                 const displayName =
-                  ticket.user?.fullName ?? ticket.username ?? "Unknown user";
-                const displayEmail =
-                  ticket.user?.email ?? ticket.email ?? "No email";
+                  ticket.user?.fullName ?? ticket.username ?? "Unknown User";
+                const displayEmail = ticket.user?.email ?? ticket.email ?? "No email";
                 const displayPhone = ticket.phone || "No phone";
+
                 return (
                   <div
-                    key={ticket.id}
-                    className={`rounded-xl border px-4 py-3 text-sm text-[#D1D5DB] ${statusInfo.bgClass} ${statusInfo.borderClass}`}
+                    key={ticket.id || ticket._id}
+                    className={`rounded-xl border-2 p-4 ${statusInfo.bgClass} ${statusInfo.borderClass}`}
                   >
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <div className="font-semibold text-white">
-                        {displayName}
+                    {/* Ticket Header */}
+                    <div className="flex flex-row items-start justify-between mb-3">
+                      <div className="flex flex-row items-center flex-1">
+                        <StatusIcon size={20} className="mr-2" style={{ color: statusInfo.iconColor }} />
+                        <span className="text-gray-900 text-sm font-bold flex-1">{displayName}</span>
                       </div>
-                      <span
-                        className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase text-white ${statusInfo.badgeColor}`}
-                      >
-                        {statusInfo.badgeLabel}
-                      </span>
+                      <div className={`px-3 py-1 rounded-full ${statusInfo.badgeClass}`}>
+                        <span className="text-white text-[10px] font-bold uppercase">
+                          {statusInfo.label}
+                        </span>
+                      </div>
                     </div>
-                    <div className="mb-1 text-xs">{displayEmail}</div>
-                    <div className="mb-1 text-xs">{displayPhone}</div>
-                    {ticket.createdAt && (
-                      <div className="text-[11px] text-muted">
-                        {new Date(ticket.createdAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit"
-                        })}
+
+                    {/* Ticket Details */}
+                    <div className="flex flex-col">
+                      {/* Access Key */}
+                      {ticket.accessKey && (
+                        <div className="flex flex-row items-center mb-2">
+                          <FiDollarSign size={14} className="text-[#9CA3AF] mr-2" />
+                          <span className="text-gray-700 text-[10px] font-mono flex-1 truncate">
+                            {ticket.accessKey}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Email */}
+                      <div className="flex flex-row items-center mb-2">
+                        <FiMail size={14} className="text-[#6B7280] mr-2" />
+                        <span className="text-gray-700 text-xs flex-1 truncate">{displayEmail}</span>
                       </div>
-                    )}
+
+                      {/* Phone */}
+                      <div className="flex flex-row items-center mb-2">
+                        <FiPhone size={14} className="text-[#6B7280] mr-2" />
+                        <span className="text-gray-700 text-xs">{displayPhone}</span>
+                      </div>
+
+                      {/* Date */}
+                      {ticket.createdAt && (
+                        <div className="flex flex-row items-center mb-2">
+                          <FiCalendar size={14} className="text-[#9CA3AF] mr-2" />
+                          <span className="text-gray-600 text-[10px]">{formatDate(ticket.createdAt)}</span>
+                        </div>
+                      )}
+
+                      {/* Username */}
+                      {ticket.user?.username && (
+                        <div className="flex flex-row items-center mt-2">
+                          <FiUser size={14} className="text-[#9CA3AF] mr-2" />
+                          <span className="text-gray-600 text-[10px]">@{ticket.user.username}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
         </div>
+      </div>
 
-        {/* Update Ticket Status by Ticket # */}
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => setUpdateModalOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent/90"
+      {/* Update Ticket Status Modal */}
+      {updateModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5"
+          onClick={() => {
+            if (!updatingStatus) {
+              setUpdateModalOpen(false);
+              setTicketNumber("");
+              setSelectedStatus(null);
+              setUpdateError(null);
+            }
+          }}
+        >
+          <div
+            className="bg-[#1F1F1F] rounded-2xl p-6 w-full max-w-[400px]"
+            onClick={(e) => e.stopPropagation()}
           >
-            <span>Update ticket status by Ticket #</span>
-          </button>
-        </div>
+            {/* Modal Title */}
+            <h2 className="text-white text-xl font-bold mb-3 text-center">Update Ticket Status</h2>
+            <p className="text-[#D1D5DB] text-sm mb-4">
+              Enter the ticket number (Ticket #) to update its status. Only tickets with "Submitted" status
+              can be updated.
+            </p>
 
-        {updateModalOpen && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
-            <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl">
-              <h2 className="mb-2 text-lg font-bold text-white">
-                Update Ticket Status
-              </h2>
-              <p className="mb-4 text-sm text-mutedLight">
-                Enter the ticket number (Ticket # / access key) and choose a new
-                status. Typically used to mark tickets as{" "}
-                <span className="font-semibold text-white">used</span> or{" "}
-                <span className="font-semibold text-white">cancelled</span> at
-                the venue.
-              </p>
-
-              <div className="mb-3">
-                <div className="mb-1 flex items-center justify-between text-xs">
-                  <label className="font-semibold text-white">
-                    Ticket number
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleScanQrClick}
-                    className="inline-flex items-center gap-1 rounded-full border border-accent/60 bg-[#111827] px-2.5 py-1 text-[11px] font-semibold text-accent hover:bg-accent hover:text-white hover:border-accent transition-colors"
-                  >
-                    <FiCamera className="h-3 w-3" />
-                    <span>Scan QR</span>
-                  </button>
-                </div>
-                <input
-                  value={ticketNumber}
-                  onChange={(e) => setTicketNumber(e.target.value)}
-                  placeholder="Enter ticket number / access key"
-                  className="w-full rounded-xl border border-border bg-[#111827] px-3.5 py-2.5 text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
-                />
+            {/* Error Message */}
+            {updateError && (
+              <div className="bg-[#EF4444]/20 border border-[#EF4444]/50 rounded-xl p-3 mb-4 flex flex-row items-center">
+                <FiAlertCircle size={20} className="text-[#EF4444] mr-2" />
+                <span className="text-[#EF4444] text-sm flex-1">{updateError}</span>
               </div>
+            )}
 
-              <div className="mb-3">
-                <label className="mb-1 block text-xs font-semibold text-white">
-                  New status
-                </label>
-                <div className="flex gap-2 text-xs">
-                  {["used", "cancelled"].map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() =>
-                        setSelectedStatus(status as "used" | "cancelled")
-                      }
-                      className={`flex-1 rounded-xl px-3 py-2 font-semibold transition ${
-                        selectedStatus === status
-                          ? "bg-accent text-white"
-                          : "bg-[#111827] text-mutedLight hover:bg-[#1F2937]"
-                      }`}
-                    >
-                      {status === "used" ? "Used" : "Cancelled"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {updateError && (
-                <p className="mb-3 text-xs font-semibold text-danger">
-                  {updateError}
-                </p>
-              )}
-
-              <div className="mt-4 flex gap-3">
+            {/* Ticket Number Input */}
+            <div className="mb-4">
+              <div className="flex flex-row items-center justify-between mb-2">
+                <label className="text-white text-sm font-semibold">Ticket Number</label>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (updatingStatus) return;
-                    setUpdateModalOpen(false);
-                    setTicketNumber("");
-                    setSelectedStatus(null);
-                    setUpdateError(null);
-                  }}
-                  className="flex-1 rounded-xl bg-[#111827] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1F2937]"
+                  onClick={handleScanQrClick}
+                  className="bg-primary py-1.5 px-3 rounded-lg flex flex-row items-center"
                 >
-                  Cancel
+                  <FiCamera size={16} className="text-white mr-1" />
+                  <span className="text-white text-xs font-semibold">Scan QR</span>
                 </button>
+              </div>
+              <input
+                type="text"
+                value={ticketNumber}
+                onChange={(e) => {
+                  setTicketNumber(e.target.value);
+                  if (updateError) setUpdateError(null);
+                }}
+                placeholder="Enter ticket # (e.g., TK-1234567890-ABC123-4567)"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-[#6B7280] outline-none"
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+            </div>
+
+            {/* Status Selection */}
+            <div className="mb-6">
+              <label className="text-white text-sm font-semibold mb-2 block">New Status</label>
+              <div className="flex flex-row gap-3">
+                {/* Used Button */}
                 <button
                   type="button"
-                  disabled={updatingStatus}
-                  onClick={handleUpdateTicketStatus}
-                  className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+                  onClick={() => setSelectedStatus("used")}
+                  className={`flex-1 py-3 px-4 rounded-xl border-2 flex flex-row items-center justify-center ${
+                    selectedStatus === "used"
+                      ? "bg-[#10B981]/20 border-[#10B981]"
+                      : "bg-[#0F0F0F] border-[#374151]"
+                  }`}
                 >
-                  {updatingStatus ? "Updating…" : "Update status"}
+                  <div className="flex flex-row items-center">
+                    <FiCheck
+                      size={20}
+                      className="mr-1.5"
+                      style={{
+                        color: selectedStatus === "used" ? "#10B981" : "#9CA3AF"
+                      }}
+                    />
+                    <span
+                      className="text-sm font-semibold"
+                      style={{
+                        color: selectedStatus === "used" ? "#10B981" : "#9CA3AF"
+                      }}
+                    >
+                      Used
+                    </span>
+                  </div>
+                </button>
+
+                {/* Cancelled Button */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedStatus("cancelled")}
+                  className={`flex-1 py-3 px-4 rounded-xl border-2 flex flex-row items-center justify-center ${
+                    selectedStatus === "cancelled"
+                      ? "bg-[#EF4444]/20 border-[#EF4444]"
+                      : "bg-[#0F0F0F] border-[#374151]"
+                  }`}
+                >
+                  <div className="flex flex-row items-center">
+                    <FiX
+                      size={20}
+                      className="mr-1.5"
+                      style={{
+                        color: selectedStatus === "cancelled" ? "#EF4444" : "#9CA3AF"
+                      }}
+                    />
+                    <span
+                      className="text-sm font-semibold"
+                      style={{
+                        color: selectedStatus === "cancelled" ? "#EF4444" : "#9CA3AF"
+                      }}
+                    >
+                      Cancelled
+                    </span>
+                  </div>
                 </button>
               </div>
             </div>
-          </div>
-        )}
 
-        <QRScanner
-          visible={qrScannerOpen}
-          onClose={() => setQrScannerOpen(false)}
-          onScan={(data) => {
-            setTicketNumber(data);
-            setQrScannerOpen(false);
-            if (updateError) setUpdateError(null);
-            success("QR code scanned. Ticket number filled automatically.");
-          }}
-        />
-      </div>
+            {/* Action Buttons */}
+            <div className="flex flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (updatingStatus) return;
+                  setUpdateModalOpen(false);
+                  setTicketNumber("");
+                  setSelectedStatus(null);
+                  setUpdateError(null);
+                }}
+                disabled={updatingStatus}
+                className="flex-1 bg-[#374151] py-3 px-4 rounded-xl"
+              >
+                <span className="text-white text-center font-semibold">Cancel</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateTicketStatus}
+                disabled={updatingStatus || !ticketNumber.trim() || !selectedStatus}
+                className="flex-1 bg-primary py-3 px-4 rounded-xl flex flex-row items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {updatingStatus ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <>
+                    <FiSave size={20} className="text-white mr-1.5" />
+                    <span className="text-white text-center font-semibold">Update</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Scanner */}
+      <QRScanner
+        visible={qrScannerOpen}
+        onClose={() => setQrScannerOpen(false)}
+        onScan={(data) => {
+          setTicketNumber(data);
+          setQrScannerOpen(false);
+          if (updateError) setUpdateError(null);
+          success("QR code scanned. Ticket number filled automatically.");
+        }}
+      />
     </div>
   );
 }
-
-

@@ -85,6 +85,35 @@ select {
   display: none;  /* Chrome, Safari and Opera */
 }
 
+/* Modal Animations */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Loading progress animation */
+@keyframes loadingProgress {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 40%;
+  }
+}
+
+.animate-loading-progress {
+  animation: loadingProgress 1.2s infinite;
+  width: 0%;
+}
+
 /* Mobile App Design - Responsive Patterns */
 @media (max-width: 639px) {
   /* Mobile Event Grid - 2 columns with minimal gap */

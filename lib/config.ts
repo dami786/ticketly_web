@@ -13,14 +13,9 @@ const getBackendUrl = () => {
   );
 };
 
-// Backend URL (used by proxy route)
+// Backend URL (used by proxy route and direct calls)
 export const BACKEND_API_URL = getBackendUrl();
 
-// In development, use Next.js API proxy to avoid CORS issues
-// In production, use direct backend URL (if CORS is configured)
-const isDevelopment = process.env.NODE_ENV === "development";
-
-// Frontend API base URL - uses proxy in dev, direct backend in production
-export const API_BASE_URL = isDevelopment 
-  ? "/api" // Use Next.js proxy in development
-  : BACKEND_API_URL; // Use direct backend in production
+// Always use direct backend URL (backend should have CORS configured)
+// This ensures all API calls go directly to https://ticketly-backend-oem4.onrender.com/api
+export const API_BASE_URL = BACKEND_API_URL;

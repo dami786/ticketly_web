@@ -2,62 +2,82 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { FiImage, FiX } from "react-icons/fi";
+import { 
+  FiArrowLeft, 
+  FiCalendar, 
+  FiCheck, 
+  FiChevronDown, 
+  FiClock, 
+  FiImage, 
+  FiMapPin, 
+  FiUser, 
+  FiX,
+  FiDollarSign
+} from "react-icons/fi";
 import { authAPI } from "../../lib/api/auth";
 import { eventsAPI } from "../../lib/api/events";
 import { useToast } from "../../lib/hooks/useToast";
 import { useAppStore } from "../../store/useAppStore";
 
 interface EventFormData {
-  name: string;
-  email: string;
-  phone: string;
-  companyName: string;
   eventName: string;
-  eventLocation: string;
   eventDate: string;
-  eventCity: string;
-  eventCategory: string;
+  eventTime: string;
+  address: string;
+  genderSelection: string;
   description: string;
   imageUrl: string;
+  eventType: 'free' | 'paid';
+  ticketPrice: string;
+  currency: string;
+  totalTickets: string;
 }
 
-const CATEGORIES = [
-  "Music",
-  "Technology",
-  "Festival",
-  "Sports",
-  "Arts",
-  "Business",
-  "Other"
+const GENDER_OPTIONS = ['All', 'Male', 'Female'];
+const CURRENCIES = [
+  { code: 'PKR', label: 'Pakistani Rupee', flag: '🇵🇰' },
+  { code: 'USD', label: 'US Dollar', flag: '🇺🇸' },
+  { code: 'EUR', label: 'Euro', flag: '🇪🇺' },
 ];
 
 export default function CreateEventPage() {
   const router = useRouter();
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
-  const { success, error: showError, warning } = useToast();
+  const { success, error: showError, warning, info } = useToast();
 
+  const [step, setStep] = useState(1);
   const [form, setForm] = useState<EventFormData>({
-    name: user?.fullName ?? "",
-    email: user?.email ?? "",
-    phone: user?.phone ?? "",
-    companyName: user?.companyName ?? "",
     eventName: "",
-    eventLocation: "",
     eventDate: "",
-    eventCity: "",
-    eventCategory: "",
+    eventTime: "18:00",
+    address: "",
+    genderSelection: "All",
     description: "",
-    imageUrl: ""
+    imageUrl: "",
+    eventType: "free",
+    ticketPrice: "",
+    currency: "PKR",
+    totalTickets: "100",
   });
 
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showGenderModal, setShowGenderModal] = useState(false);
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const update = (field: keyof EventFormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: "" }));
+    }
   };
 
   const compressImage = (file: File, maxWidth: number = 1920, quality: number = 0.8): Promise<string> => {
@@ -72,7 +92,6 @@ export default function CreateEventPage() {
           let width = img.width;
           let height = img.height;
 
-          // Calculate new dimensions
           if (width > maxWidth) {
             height = (height * maxWidth) / width;
             width = maxWidth;
@@ -101,42 +120,33 @@ export default function CreateEventPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       warning("Please select a valid image file.");
       return;
     }
 
-    // Validate file size (max 5MB before compression)
     if (file.size > 5 * 1024 * 1024) {
       warning("Image size should be less than 5MB.");
       return;
     }
 
+    setUploadingImage(true);
     try {
-      // Compress image to reduce size
       const compressedImage = await compressImage(file, 1920, 0.75);
-      
-      // Check compressed size (base64 string length is actual size)
       const base64Size = compressedImage.length;
-      console.log("Compressed image size:", (base64Size / 1024).toFixed(2), "KB");
       
       if (base64Size > 1 * 1024 * 1024) {
-        // If larger than 1MB, compress more aggressively
         const moreCompressed = await compressImage(file, 1280, 0.6);
         const moreCompressedSize = moreCompressed.length;
-        console.log("More compressed size:", (moreCompressedSize / 1024).toFixed(2), "KB");
         
         if (moreCompressedSize > 1 * 1024 * 1024) {
-          // Final compression - very aggressive (max 800KB target)
           const finalCompressed = await compressImage(file, 1024, 0.5);
           const finalSize = finalCompressed.length;
-          console.log("Final compressed size:", (finalSize / 1024).toFixed(2), "KB");
           
           if (finalSize > 1.2 * 1024 * 1024) {
-            warning("Image is still too large. Please select a smaller image or create event without image.");
-            return;
-          }
+            warning("Image is still too large. Please select a smaller image.");
+      return;
+    }
           
           setImagePreview(finalCompressed);
           update("imageUrl", finalCompressed);
@@ -151,6 +161,8 @@ export default function CreateEventPage() {
     } catch (error) {
       warning("Failed to process image. Please try again.");
       console.error("Image compression error:", error);
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -162,17 +174,64 @@ export default function CreateEventPage() {
     }
   };
 
+  const validateStep1 = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!form.eventName.trim()) {
+      newErrors.eventName = "Event name is required.";
+    }
+    if (!form.eventDate) {
+      newErrors.eventDate = "Start date is required.";
+    }
+    if (!form.eventTime) {
+      newErrors.eventTime = "Time is required.";
+    }
+    if (!form.genderSelection) {
+      newErrors.genderSelection = "Gender selection is required.";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validateStep2 = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    if (form.eventType === "paid") {
+      if (!form.ticketPrice || parseFloat(form.ticketPrice) <= 0) {
+        newErrors.ticketPrice = "Cost per ticket is required for paid events.";
+      }
+      if (!form.totalTickets || parseInt(form.totalTickets) <= 0) {
+        newErrors.totalTickets = "Total tickets must be greater than 0.";
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleNext = () => {
+    if (validateStep1()) {
+      setStep(2);
+    }
+  };
+
+  const handleBack = () => {
+    if (step === 1) {
+      router.back();
+    } else {
+      setStep(1);
+    }
+  };
+
+  const formatDate = (dateString: string): string => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  };
+
   const handleSubmit = async () => {
-    if (!form.eventName || !form.eventLocation || !form.eventDate || !form.eventCity) {
-      warning("Please fill in all required fields (Event name, location, date, city).");
-      return;
-    }
-    if (!form.description || form.description.length < 10) {
-      warning("Please provide an event description (at least 10 characters).");
-      return;
-    }
-    if (!form.email || !form.phone) {
-      warning("Please fill in your email and phone number.");
+    if (!validateStep2()) {
       return;
     }
 
@@ -186,21 +245,12 @@ export default function CreateEventPage() {
 
     setLoading(true);
     try {
-      // Prepare image - if too large, skip it
       let finalImage = form.imageUrl;
       if (finalImage && finalImage.length > 1 * 1024 * 1024) {
-        // If base64 string is larger than 1MB, skip it to avoid server errors
         warning("Image is too large. Creating event without image. You can add image later.");
         finalImage = "";
       }
-      
-      console.log("Event data size:", JSON.stringify({
-        title: form.eventName,
-        description: form.description,
-        image: finalImage ? `${finalImage.substring(0, 50)}...` : "none"
-      }).length, "bytes");
 
-      // Validate required fields
       if (!form.eventName.trim()) {
         warning("Event name is required.");
         setLoading(false);
@@ -211,54 +261,31 @@ export default function CreateEventPage() {
         setLoading(false);
         return;
       }
-      if (!form.eventLocation.trim() || !form.eventCity.trim()) {
-        warning("Event location is required.");
-        setLoading(false);
-        return;
-      }
 
-      const eventData = {
+      const eventData: any = {
         title: form.eventName.trim(),
         description: form.description.trim() || "No description provided.",
         date: form.eventDate,
-        time: "18:00",
-        location: `${form.eventLocation.trim()}, ${form.eventCity.trim()}`,
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        ticketPrice: 0,
-        totalTickets: 100,
-        ...(finalImage && finalImage.trim() ? { image: finalImage } : {})
+        time: form.eventTime,
+        location: form.address.trim() || "Location TBD",
+        email: user?.email || "",
+        phone: user?.phone || "",
+        gender: form.genderSelection.toLowerCase(),
+        ticketPrice: form.eventType === "paid" ? parseFloat(form.ticketPrice) : 0,
+        totalTickets: form.eventType === "paid" ? parseInt(form.totalTickets) : undefined,
+        ...(finalImage && finalImage.trim() ? { image: finalImage } : {}),
       };
-
-      console.log("Sending event data to API:", {
-        ...eventData,
-        image: eventData.image ? `${eventData.image.substring(0, 50)}... (${(eventData.image.length / 1024).toFixed(2)} KB)` : "none"
-      });
 
       const response = await eventsAPI.createEvent(eventData);
 
-      console.log("=== API Response ===");
-      console.log("Full response:", JSON.stringify(response, null, 2));
-      console.log("Response type:", typeof response);
-      console.log("Response.success:", response?.success);
-      console.log("Response.event:", response?.event);
-
-      // Handle different response formats
       if (response && (response.success === true || (response as any).success === true)) {
-        // Try multiple ways to extract event ID
         const eventId = 
           response.event?.id || 
           (response as any).event?._id || 
-          (response as any).event?.id ||
-          (response as any).event?._id ||
           (response as any).eventId || 
           (response as any).id ||
           (response as any)._id;
         
-        console.log("Extracted Event ID:", eventId);
-        console.log("Response.event structure:", response.event);
-        
-        // Update user profile
         try {
           const profile = await authAPI.getProfile();
           if (profile.success && profile.user) {
@@ -266,73 +293,36 @@ export default function CreateEventPage() {
           }
         } catch (profileError) {
           console.warn("Failed to update profile:", profileError);
-          // Continue even if profile update fails
         }
         
         if (eventId) {
           success("Event created successfully!");
           setTimeout(() => {
-            router.push(`/created-events/${eventId}`);
+          router.push(`/created-events/${eventId}`);
           }, 500);
         } else {
-          console.warn("⚠️ Event created but ID missing. Full response:", response);
-          // Try to get ID from response data directly
-          const fallbackId = (response as any).data?.event?._id || 
-                            (response as any).data?.event?.id ||
-                            (response as any).data?._id ||
-                            (response as any).data?.id;
-          
-          if (fallbackId) {
-            console.log("Found fallback ID:", fallbackId);
-            success("Event created successfully!");
-            setTimeout(() => {
-              router.push(`/created-events/${fallbackId}`);
-            }, 500);
-          } else {
-            success("Event created successfully! Redirecting to home...");
-            setTimeout(() => {
-              router.push("/");
-            }, 1000);
-          }
+          success("Event created successfully! Redirecting to home...");
+          setTimeout(() => {
+          router.push("/");
+          }, 1000);
         }
       } else {
-        // Response was not successful
         const errorMsg = 
           response?.message || 
           (response as any)?.message ||
           (response as any)?.error || 
           (response as any)?.error?.message ||
           "Failed to create event. Please check all fields and try again.";
-        console.error("❌ Event creation failed:", errorMsg);
-        console.error("Full response:", response);
         showError(errorMsg);
       }
     } catch (error: any) {
-      console.error("=== Event Creation Error ===");
-      console.error("Error object:", error);
-      console.error("Error message:", error?.message);
-      console.error("Error status:", error?.response?.status);
-      console.error("Error response data:", error?.response?.data);
-      console.error("Request URL:", error?.config?.url);
-      console.error("Request method:", error?.config?.method);
-      
-      const payloadSize = JSON.stringify({
-        title: form.eventName,
-        description: form.description,
-        date: form.eventDate,
-        image: form.imageUrl ? `${form.imageUrl.substring(0, 50)}...` : "none"
-      }).length;
-      console.error("Request payload size:", `${(payloadSize / 1024).toFixed(2)} KB`);
-      
-      // Extract error message from various possible locations
       let errorMessage = 
         error?.response?.data?.message ??
         error?.response?.data?.error ??
         error?.response?.data?.msg ??
-        error?.message ??
+          error?.message ??
         "Failed to create event. Please try again.";
       
-      // Handle network errors
       if (error?.code === "ECONNABORTED" || error?.message?.includes("timeout")) {
         errorMessage = "Request timed out. Please check your internet connection and try again.";
       } else if (error?.code === "ERR_NETWORK" || !error?.response) {
@@ -341,7 +331,6 @@ export default function CreateEventPage() {
       
       showError(errorMessage);
       
-      // Special handling for size-related errors
       if (
         errorMessage.toLowerCase().includes("too large") ||
         errorMessage.toLowerCase().includes("entity too large") ||
@@ -354,223 +343,929 @@ export default function CreateEventPage() {
     }
   };
 
+  const step1Valid = form.eventName.trim() && form.eventDate && form.eventTime && form.genderSelection;
+  const step2Valid = form.eventType === "free" || (form.ticketPrice && parseFloat(form.ticketPrice) > 0 && form.totalTickets && parseInt(form.totalTickets) > 0);
+
+  const selectedCurrency = CURRENCIES.find(c => c.code === form.currency) || CURRENCIES[0];
+
   return (
-    <div className="bg-white">
-      <div className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Create event</h1>
+    <div className="bg-white min-h-screen">
+      {/* Desktop Layout - Same 2-step form as mobile */}
+      <div className="hidden sm:block">
+        {/* Header */}
+        <header 
+          className="border-b border-gray-200"
+          style={{ paddingTop: '52px' }}
+        >
+          <div className="mx-auto max-w-5xl px-4 sm:px-6 pb-4">
+            {/* Top Row: Back Button + Progress + Step Counter */}
+            <div className="flex flex-row items-center justify-between mb-4">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="-ml-2 p-2"
+              >
+                <FiArrowLeft size={24} className="text-gray-900" />
+              </button>
+              
+              <div className="flex-1 flex flex-row items-center justify-center gap-2 mx-4">
+                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden max-w-xs">
+                  <div 
+                    className={`h-full bg-primary rounded-full transition-all duration-300 ${
+                      step === 1 ? 'w-1/2' : 'w-full'
+                    }`}
+                  />
+                </div>
+              </div>
+              
+              <span className="text-sm font-medium text-gray-900 w-10 text-right">
+                {step} of 2
+              </span>
+            </div>
+
+            {/* Title */}
+            <h1 className="text-2xl font-bold text-gray-900">
+              {step === 1 ? "Event Details" : "Payment and Ticket Details"}
+            </h1>
+          </div>
+        </header>
+
+        {/* Step Content */}
+        <div className="mx-auto max-w-5xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
+          {step === 1 ? (
+            <>
+              {/* Image Upload */}
+              <div className="mb-6 max-w-xs mx-auto">
+                <div
+                  className={`w-full aspect-[16/9] rounded-2xl border-2 border-primary overflow-hidden bg-gray-50 cursor-pointer relative ${
+                    uploadingImage ? 'opacity-60 pointer-events-none' : ''
+                  }`}
+                  onClick={() => !imagePreview && fileInputRef.current?.click()}
+                >
+                  {imagePreview ? (
+                    <div className="relative w-full h-full">
+                      <img
+                        src={imagePreview}
+                        alt="Event preview"
+                        className="w-full h-full object-cover"
+                      />
+                      {uploadingImage && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                      <div className="absolute top-3 left-3 right-3 flex justify-between">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fileInputRef.current?.click();
+                          }}
+                          className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-sm"
+                        >
+                          <FiImage size={20} className="text-white" />
+                        </button>
           <button
             type="button"
-            onClick={() => router.back()}
-            className="text-sm text-gray-500Light hover:text-gray-900"
-          >
-            Back
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveImage();
+                          }}
+                          className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-sm"
+                        >
+                          <FiX size={20} className="text-white" />
           </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center">
+                      <FiImage size={48} className="text-primary mb-2" />
+                      <span className="text-[#9CA3AF] text-sm mt-2">Tap to add Thumbnail</span>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                </div>
         </div>
 
-        <div className="space-y-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-xl">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Name
+              {/* Event Name */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Event Name
               </label>
+                <div className={`flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                  errors.eventName ? 'border-[#EF4444]' : 'border-gray-200'
+                }`}>
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FiCalendar size={18} className="text-[#9CA3AF]" />
+                  </div>
               <input
-                value={form.name}
-                onChange={(e) => update("name", e.target.value)}
-                placeholder="e.g. Fatima Ali"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+                    type="text"
+                    value={form.eventName}
+                    onChange={(e) => update("eventName", e.target.value)}
+                    placeholder="name"
+                    className="flex-1 text-sm text-gray-900 bg-transparent border-none outline-none placeholder:text-gray-500"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Email
+                {errors.eventName && (
+                  <span className="text-xs text-[#EF4444] mt-1 block mb-3">{errors.eventName}</span>
+                )}
+              </div>
+
+              {/* Date & Time - Side by Side */}
+              <div className="flex gap-2 mb-3">
+                {/* Start Date */}
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                    Start Date
               </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    className={`w-full flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                      errors.eventDate ? 'border-[#EF4444]' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                      <FiCalendar size={18} className="text-[#9CA3AF]" />
+                    </div>
+                    <span className={`flex-1 text-sm text-left ${
+                      form.eventDate ? 'text-gray-900' : 'text-[#6B7280]'
+                    }`}>
+                      {form.eventDate ? formatDate(form.eventDate) : 'Select date'}
+                    </span>
+                  </button>
+                  {showDatePicker && (
+                    <div className="mt-2">
               <input
-                value={form.email}
-                onChange={(e) => update("email", e.target.value)}
-                placeholder="e.g. fatimaali@gmail.com"
-                type="email"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+                        type="date"
+                        value={form.eventDate}
+                        onChange={(e) => {
+                          update("eventDate", e.target.value);
+                          setShowDatePicker(false);
+                        }}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Phone number
+                  )}
+                  {errors.eventDate && (
+                    <span className="text-xs text-[#EF4444] mt-1 block">{errors.eventDate}</span>
+                  )}
+                </div>
+
+                {/* Time */}
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                    Time
               </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowTimePicker(!showTimePicker)}
+                    className={`w-full flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                      errors.eventTime ? 'border-[#EF4444]' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                      <FiClock size={18} className="text-[#9CA3AF]" />
+                    </div>
+                    <span className="flex-1 text-sm text-gray-900 text-left">
+                      {form.eventTime}
+                    </span>
+                  </button>
+                  {showTimePicker && (
+                    <div className="mt-2">
               <input
-                value={form.phone}
-                onChange={(e) => update("phone", e.target.value)}
-                placeholder="+92…"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+                        type="time"
+                        value={form.eventTime}
+                        onChange={(e) => {
+                          update("eventTime", e.target.value);
+                          setShowTimePicker(false);
+                        }}
+                        className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Company name
+                  )}
+                  {errors.eventTime && (
+                    <span className="text-xs text-[#EF4444] mt-1 block">{errors.eventTime}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Address (Optional) */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Address <span className="text-[#6B7280]">(optional)</span>
               </label>
+                <div className="flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border border-gray-200">
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FiMapPin size={18} className="text-[#9CA3AF]" />
+                  </div>
               <input
-                value={form.companyName}
-                onChange={(e) => update("companyName", e.target.value)}
-                placeholder="e.g. Paymo events"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+                    type="text"
+                    value={form.address}
+                    onChange={(e) => update("address", e.target.value)}
+                    placeholder="e.g. Islamabad, Pakistan"
+                    className="flex-1 text-sm text-gray-900 bg-transparent border-none outline-none placeholder:text-gray-500"
               />
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Event name
+              {/* Gender Selection */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Gender
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowGenderModal(true)}
+                  className={`w-full flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                    errors.genderSelection ? 'border-[#EF4444]' : 'border-gray-200'
+                  }`}
+                >
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FiUser size={18} className="text-[#9CA3AF]" />
+                  </div>
+                  <span className="flex-1 text-sm text-gray-900 text-left">
+                    {form.genderSelection}
+                  </span>
+                  <FiChevronDown size={20} className="text-[#9CA3AF]" />
+                </button>
+                {errors.genderSelection && (
+                  <span className="text-xs text-[#EF4444] mt-1 block mb-3">{errors.genderSelection}</span>
+                )}
+              </div>
+
+              {/* Description (Optional) */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Description <span className="text-[#6B7280]">(optional)</span>
+                </label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => update("description", e.target.value)}
+                  placeholder="description"
+                  rows={4}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-md py-2 px-3 text-sm text-gray-900 placeholder:text-gray-500 min-h-[72px] resize-y outline-none focus:border-primary focus:bg-white"
+                />
+              </div>
+
+              {/* Next Button */}
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={!step1Valid}
+                className="w-full py-2.5 rounded-md bg-primary text-white text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_2px_4px_rgba(220,38,38,0.3)]"
+              >
+                Next
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Step 2 - Same as mobile */}
+              {/* Event Type Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-900 mb-4">
+                  Event Type
+                </label>
+                <div className="flex gap-2">
+                  {/* Paid Event Button */}
+                  <button
+                    type="button"
+                    onClick={() => update("eventType", "paid")}
+                    className={`flex-1 py-2.5 px-3 rounded-md border-2 flex flex-row items-center justify-center gap-2 ${
+                      form.eventType === "paid"
+                        ? "border-primary bg-primary/10"
+                        : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      form.eventType === "paid"
+                        ? "bg-primary"
+                        : "border-2 border-[#6B7280] bg-transparent"
+                    }`}>
+                      {form.eventType === "paid" && (
+                        <FiCheck size={14} className="text-white" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">Paid Event</span>
+                  </button>
+
+                  {/* Free Event Button */}
+                  <button
+                    type="button"
+                    onClick={() => update("eventType", "free")}
+                    className={`flex-1 py-2.5 px-3 rounded-md border-2 flex flex-row items-center justify-center gap-2 ${
+                      form.eventType === "free"
+                        ? "border-primary bg-primary/10"
+                        : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      form.eventType === "free"
+                        ? "bg-primary"
+                        : "border-2 border-[#6B7280] bg-transparent"
+                    }`}>
+                      {form.eventType === "free" && (
+                        <FiCheck size={14} className="text-white" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">Free Event</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Paid Event Fields */}
+              {form.eventType === "paid" && (
+                <>
+                  {/* Cost Per Ticket */}
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                      Cost Per Ticket
               </label>
+                    <div className="flex flex-row items-center gap-2">
+                      <div className="w-8 h-8 bg-[#374151] rounded-full flex items-center justify-center flex-shrink-0">
+                        <FiDollarSign size={18} className="text-[#9CA3AF]" />
+                      </div>
               <input
-                value={form.eventName}
-                onChange={(e) => update("eventName", e.target.value)}
-                placeholder="e.g. Catcha cat"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+                        type="number"
+                        value={form.ticketPrice}
+                        onChange={(e) => update("ticketPrice", e.target.value)}
+                        placeholder="e.g. 600"
+                        className={`flex-1 bg-[#1F1F1F] border rounded-md py-2 px-3 text-sm text-white placeholder:text-gray-500 outline-none ${
+                          errors.ticketPrice ? 'border-[#EF4444]' : 'border-[#374151]'
+                        }`}
               />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Event location
+                    {errors.ticketPrice && (
+                      <span className="text-xs text-[#EF4444] mt-1 block mb-3">{errors.ticketPrice}</span>
+                    )}
+                  </div>
+
+                  {/* Select Currency */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                      Select Currency
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrencyModal(true)}
+                      className="w-full flex flex-row items-center gap-2 bg-[#1F1F1F] border border-[#374151] rounded-md py-2 px-3 active:opacity-80"
+                    >
+                      <div className="w-8 h-8 bg-[#374151] rounded-full flex items-center justify-center flex-shrink-0 text-lg">
+                        {selectedCurrency.flag}
+                      </div>
+                      <span className="flex-1 text-base text-white text-left">
+                        {form.currency}
+                      </span>
+                      <FiChevronDown size={20} className="text-[#9CA3AF]" />
+                    </button>
+                  </div>
+
+                  {/* Total Tickets */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                      Total Tickets
               </label>
               <input
-                value={form.eventLocation}
-                onChange={(e) => update("eventLocation", e.target.value)}
-                placeholder="e.g. LUMS"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+                      type="number"
+                      value={form.totalTickets}
+                      onChange={(e) => update("totalTickets", e.target.value)}
+                      placeholder="e.g. 100"
+                      className={`w-full bg-gray-50 border rounded-md py-2 px-3 text-sm text-gray-900 placeholder:text-gray-500 outline-none ${
+                        errors.totalTickets ? 'border-[#EF4444]' : 'border-gray-200'
+                      }`}
+                    />
+                    {errors.totalTickets && (
+                      <span className="text-xs text-[#EF4444] mt-1 block mb-4">{errors.totalTickets}</span>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Post Button */}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={loading || !step2Valid}
+                className="w-full py-2.5 rounded-md bg-primary text-white text-base font-semibold disabled:opacity-60 disabled:cursor-not-allowed shadow-[0_2px_4px_rgba(220,38,38,0.3)] mt-2"
+              >
+                {loading ? "Posting…" : "Post"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Layout - 2-Step Form (as per Mobile App Design Guide) */}
+      <div className="sm:hidden">
+        {/* Header */}
+        <header 
+          className="px-4 pb-4 border-b border-gray-200"
+          style={{ paddingTop: 'calc(52px + env(safe-area-inset-top))' }}
+        >
+          {/* Top Row: Back Button + Progress + Step Counter */}
+          <div className="flex flex-row items-center justify-between mb-4">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="-ml-2 p-2"
+            >
+              <FiArrowLeft size={24} className="text-gray-900" />
+            </button>
+            
+            <div className="flex-1 flex flex-row items-center justify-center gap-2 mx-4">
+              <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden max-w-xs">
+                <div 
+                  className={`h-full bg-primary rounded-full transition-all duration-300 ${
+                    step === 1 ? 'w-1/2' : 'w-full'
+                  }`}
+                />
+              </div>
+            </div>
+            
+            <span className="text-sm font-medium text-gray-900 w-10 text-right">
+              {step} of 2
+            </span>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-2xl font-bold text-gray-900">
+            {step === 1 ? "Event Details" : "Payment and Ticket Details"}
+          </h1>
+        </header>
+
+        {/* Step Content */}
+        <div 
+          className="pt-6 px-4"
+          style={{ paddingBottom: 'calc(40px + env(safe-area-inset-bottom))' }}
+        >
+          {step === 1 ? (
+            <>
+              {/* Image Upload */}
+              <div className="mb-6 max-w-xs mx-auto">
+                <div
+                  className={`w-full aspect-[16/9] rounded-2xl border-2 border-primary overflow-hidden bg-gray-50 cursor-pointer relative ${
+                    uploadingImage ? 'opacity-60 pointer-events-none' : ''
+                  }`}
+                  onClick={() => !imagePreview && fileInputRef.current?.click()}
+                >
+                  {imagePreview ? (
+                    <div className="relative w-full h-full">
+                      <img
+                        src={imagePreview}
+                        alt="Event preview"
+                        className="w-full h-full object-cover"
+                      />
+                      {uploadingImage && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                      <div className="absolute top-3 left-3 right-3 flex justify-between">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fileInputRef.current?.click();
+                          }}
+                          className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-sm"
+                        >
+                          <FiImage size={20} className="text-white" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveImage();
+                          }}
+                          className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-sm"
+                        >
+                          <FiX size={20} className="text-white" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center">
+                      <FiImage size={48} className="text-primary mb-2" />
+                      <span className="text-[#9CA3AF] text-sm mt-2">Tap to add Thumbnail</span>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
               />
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Event date
+              {/* Event Name */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Event Name
+                </label>
+                <div className={`flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                  errors.eventName ? 'border-[#EF4444]' : 'border-gray-200'
+                }`}>
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FiCalendar size={18} className="text-[#9CA3AF]" />
+                  </div>
+                  <input
+                    type="text"
+                    value={form.eventName}
+                    onChange={(e) => update("eventName", e.target.value)}
+                    placeholder="name"
+                    className="flex-1 text-sm text-gray-900 bg-transparent border-none outline-none placeholder:text-gray-500"
+                  />
+                </div>
+                {errors.eventName && (
+                  <span className="text-xs text-[#EF4444] mt-1 block mb-3">{errors.eventName}</span>
+                )}
+              </div>
+
+              {/* Date & Time - Side by Side */}
+              <div className="flex gap-2 mb-3">
+                {/* Start Date */}
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                    Start Date
               </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    className={`w-full flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                      errors.eventDate ? 'border-[#EF4444]' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                      <FiCalendar size={18} className="text-[#9CA3AF]" />
+                    </div>
+                    <span className={`flex-1 text-sm text-left ${
+                      form.eventDate ? 'text-gray-900' : 'text-[#6B7280]'
+                    }`}>
+                      {form.eventDate ? formatDate(form.eventDate) : 'Select date'}
+                    </span>
+                  </button>
+                  {showDatePicker && (
+                    <div className="mt-2">
               <input
                 type="date"
                 value={form.eventDate}
-                onChange={(e) => update("eventDate", e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
+                        onChange={(e) => {
+                          update("eventDate", e.target.value);
+                          setShowDatePicker(false);
+                        }}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-900">
-                Event city
+                  )}
+                  {errors.eventDate && (
+                    <span className="text-xs text-[#EF4444] mt-1 block">{errors.eventDate}</span>
+                  )}
+                </div>
+
+                {/* Time */}
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                    Time
               </label>
-              <input
-                value={form.eventCity}
-                onChange={(e) => update("eventCity", e.target.value)}
-                placeholder="Enter city name"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-900">
-              Event category
-            </label>
-            <select
-              value={form.eventCategory}
-              onChange={(e) => update("eventCategory", e.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="">Select category</option>
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-900">
-              Event image (optional)
-            </label>
-            {imagePreview ? (
-              <div className="relative">
-                <div className="relative overflow-hidden rounded-xl border border-gray-200">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imagePreview}
-                    alt="Event preview"
-                    className="h-48 w-full object-cover"
-                  />
                   <button
                     type="button"
-                    onClick={handleRemoveImage}
-                    className="absolute top-2 right-2 rounded-full bg-black/60 p-2 text-gray-900 backdrop-blur-sm transition-colors hover:bg-black/80"
-                    aria-label="Remove image"
+                    onClick={() => setShowTimePicker(!showTimePicker)}
+                    className={`w-full flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                      errors.eventTime ? 'border-[#EF4444]' : 'border-gray-200'
+                    }`}
                   >
-                    <FiX className="h-4 w-4" />
+                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                      <FiClock size={18} className="text-[#9CA3AF]" />
+                    </div>
+                    <span className="flex-1 text-sm text-gray-900 text-left">
+                      {form.eventTime}
+                    </span>
                   </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-900 transition-colors hover:border-accent hover:bg-primary/10"
-                >
-                  Change image
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
-              </div>
-            ) : (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-sm font-semibold text-gray-900 transition-all hover:border-accent hover:bg-primary/5"
-                >
-                  <FiImage className="h-5 w-5" />
-                  <span>Select image from gallery</span>
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
-                <p className="mt-1 text-xs text-gray-500Light">
-                  Supported formats: JPG, PNG, WebP (Max 5MB)
-                </p>
-              </div>
-            )}
+                  {showTimePicker && (
+                    <div className="mt-2">
+              <input
+                        type="time"
+                        value={form.eventTime}
+                        onChange={(e) => {
+                          update("eventTime", e.target.value);
+                          setShowTimePicker(false);
+                        }}
+                        className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  )}
+                  {errors.eventTime && (
+                    <span className="text-xs text-[#EF4444] mt-1 block">{errors.eventTime}</span>
+                  )}
+            </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-900">
-              What is your event about
+              {/* Address (Optional) */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Address <span className="text-[#6B7280]">(optional)</span>
+              </label>
+                <div className="flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border border-gray-200">
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FiMapPin size={18} className="text-[#9CA3AF]" />
+            </div>
+              <input
+                    type="text"
+                    value={form.address}
+                    onChange={(e) => update("address", e.target.value)}
+                    placeholder="e.g. Islamabad, Pakistan"
+                    className="flex-1 text-sm text-gray-900 bg-transparent border-none outline-none placeholder:text-gray-500"
+              />
+            </div>
+          </div>
+
+              {/* Gender Selection */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Gender
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowGenderModal(true)}
+                  className={`w-full flex flex-row items-center gap-2 bg-gray-50 rounded-md py-2 px-3 border ${
+                    errors.genderSelection ? 'border-[#EF4444]' : 'border-gray-200'
+                  }`}
+                >
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <FiUser size={18} className="text-[#9CA3AF]" />
+                  </div>
+                  <span className="flex-1 text-sm text-gray-900 text-left">
+                    {form.genderSelection}
+                  </span>
+                  <FiChevronDown size={20} className="text-[#9CA3AF]" />
+                </button>
+                {errors.genderSelection && (
+                  <span className="text-xs text-[#EF4444] mt-1 block mb-3">{errors.genderSelection}</span>
+                )}
+              </div>
+
+              {/* Description (Optional) */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Description <span className="text-[#6B7280]">(optional)</span>
             </label>
             <textarea
               value={form.description}
               onChange={(e) => update("description", e.target.value)}
-              rows={5}
-              placeholder="Enter a description…"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="description"
+                  rows={4}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-md py-2 px-3 text-sm text-gray-900 placeholder:text-gray-500 min-h-[72px] resize-y outline-none focus:border-primary focus:bg-white"
             />
           </div>
 
+              {/* Next Button */}
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={!step1Valid}
+                className="w-full py-2.5 rounded-md bg-primary text-white text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_2px_4px_rgba(220,38,38,0.3)]"
+              >
+                Next
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Event Type Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-900 mb-4">
+                  Event Type
+                </label>
+                <div className="flex gap-2">
+                  {/* Paid Event Button */}
+                  <button
+                    type="button"
+                    onClick={() => update("eventType", "paid")}
+                    className={`flex-1 py-2.5 px-3 rounded-md border-2 flex flex-row items-center justify-center gap-2 ${
+                      form.eventType === "paid"
+                        ? "border-primary bg-primary/10"
+                        : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      form.eventType === "paid"
+                        ? "bg-primary"
+                        : "border-2 border-[#6B7280] bg-transparent"
+                    }`}>
+                      {form.eventType === "paid" && (
+                        <FiCheck size={14} className="text-white" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">Paid Event</span>
+                  </button>
+
+                  {/* Free Event Button */}
           <button
             type="button"
-            disabled={loading}
-            onClick={handleSubmit}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-primary/90 disabled:opacity-60"
-          >
-            {loading ? "Creating event…" : "Create event"}
+                    onClick={() => update("eventType", "free")}
+                    className={`flex-1 py-2.5 px-3 rounded-md border-2 flex flex-row items-center justify-center gap-2 ${
+                      form.eventType === "free"
+                        ? "border-primary bg-primary/10"
+                        : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      form.eventType === "free"
+                        ? "bg-primary"
+                        : "border-2 border-[#6B7280] bg-transparent"
+                    }`}>
+                      {form.eventType === "free" && (
+                        <FiCheck size={14} className="text-white" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">Free Event</span>
           </button>
         </div>
       </div>
+
+              {/* Paid Event Fields */}
+              {form.eventType === "paid" && (
+                <>
+                  {/* Cost Per Ticket */}
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                      Cost Per Ticket
+                    </label>
+                    <div className="flex flex-row items-center gap-2">
+                      <div className="w-8 h-8 bg-[#374151] rounded-full flex items-center justify-center flex-shrink-0">
+                        <FiDollarSign size={18} className="text-[#9CA3AF]" />
+                      </div>
+                      <input
+                        type="number"
+                        value={form.ticketPrice}
+                        onChange={(e) => update("ticketPrice", e.target.value)}
+                        placeholder="e.g. 600"
+                        className={`flex-1 bg-[#1F1F1F] border rounded-md py-2 px-3 text-sm text-white placeholder:text-gray-500 outline-none ${
+                          errors.ticketPrice ? 'border-[#EF4444]' : 'border-[#374151]'
+                        }`}
+                      />
+                    </div>
+                    {errors.ticketPrice && (
+                      <span className="text-xs text-[#EF4444] mt-1 block mb-3">{errors.ticketPrice}</span>
+                    )}
+                  </div>
+
+                  {/* Select Currency */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                      Select Currency
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrencyModal(true)}
+                      className="w-full flex flex-row items-center gap-2 bg-[#1F1F1F] border border-[#374151] rounded-md py-2 px-3 active:opacity-80"
+                    >
+                      <div className="w-8 h-8 bg-[#374151] rounded-full flex items-center justify-center flex-shrink-0 text-lg">
+                        {selectedCurrency.flag}
+                      </div>
+                      <span className="flex-1 text-base text-white text-left">
+                        {form.currency}
+                      </span>
+                      <FiChevronDown size={20} className="text-[#9CA3AF]" />
+                    </button>
+                  </div>
+
+                  {/* Total Tickets */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-1.5">
+                      Total Tickets
+                    </label>
+                    <input
+                      type="number"
+                      value={form.totalTickets}
+                      onChange={(e) => update("totalTickets", e.target.value)}
+                      placeholder="e.g. 100"
+                      className={`w-full bg-gray-50 border rounded-md py-2 px-3 text-sm text-gray-900 placeholder:text-gray-500 outline-none ${
+                        errors.totalTickets ? 'border-[#EF4444]' : 'border-gray-200'
+                      }`}
+                    />
+                    {errors.totalTickets && (
+                      <span className="text-xs text-[#EF4444] mt-1 block mb-4">{errors.totalTickets}</span>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Post Button */}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={loading || !step2Valid}
+                className="w-full py-2.5 rounded-md bg-primary text-white text-base font-semibold disabled:opacity-60 disabled:cursor-not-allowed shadow-[0_2px_4px_rgba(220,38,38,0.3)] mt-2"
+              >
+                {loading ? "Posting…" : "Post"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Gender Selection Modal */}
+      {showGenderModal && (
+        <div className="fixed inset-0 z-50">
+          <div 
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowGenderModal(false)}
+          />
+          <div 
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl border-t border-gray-200 px-4 pb-8 pt-2 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-3" />
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Gender Selection</h2>
+            <div className="space-y-2">
+              {GENDER_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    update("genderSelection", option);
+                    setShowGenderModal(false);
+                  }}
+                  className={`w-full flex flex-row items-center py-3.5 px-4 rounded-xl mb-2 transition-all ${
+                    form.genderSelection === option
+                      ? "bg-primary/10 border border-primary"
+                      : "bg-gray-100 border border-transparent"
+                  } active:opacity-80`}
+                >
+                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center mr-3">
+                    <FiUser size={18} className="text-[#9CA3AF]" />
+                  </div>
+                  <span className="flex-1 text-base font-medium text-gray-900 text-left">
+                    {option}
+                  </span>
+                  {form.genderSelection === option && (
+                    <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                      <FiCheck size={14} className="text-white" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Currency Selection Modal */}
+      {showCurrencyModal && (
+        <div className="fixed inset-0 z-50">
+          <div 
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowCurrencyModal(false)}
+          />
+          <div 
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl border-t border-gray-200 px-4 pb-8 pt-2 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-3" />
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Currency</h2>
+            <div className="space-y-2">
+              {CURRENCIES.map((currency) => (
+                <button
+                  key={currency.code}
+                  type="button"
+                  onClick={() => {
+                    update("currency", currency.code);
+                    setShowCurrencyModal(false);
+                  }}
+                  className={`w-full flex flex-row items-center py-3.5 px-4 rounded-xl mb-2 transition-all ${
+                    form.currency === currency.code
+                      ? "bg-primary/10 border border-primary"
+                      : "bg-gray-100 border border-transparent"
+                  } active:opacity-80`}
+                >
+                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center mr-3 text-lg">
+                    {currency.flag}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="text-base font-medium text-gray-900">{currency.code}</div>
+                    <div className="text-sm text-[#9CA3AF]">{currency.label}</div>
+                  </div>
+                  {form.currency === currency.code && (
+                    <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                      <FiCheck size={14} className="text-white" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-

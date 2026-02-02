@@ -2,23 +2,23 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { FiArrowLeft, FiEdit, FiX, FiImage } from "react-icons/fi";
 import { ticketsAPI, type Ticket } from "../../../lib/api/tickets";
 import { API_BASE_URL } from "../../../lib/config";
 import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
 
+type PaymentMethod = "bank_transfer" | "easypaisa" | "jazzcash" | "other";
+
 export default function TicketPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const user = useAppStore((state) => state.user);
-  const setUser = useAppStore((state) => state.setUser);
-
-  type PaymentMethod = "bank" | "easypaisa" | "jazzcash" | "other";
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
   const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
   const [paymentScreenshotPreview, setPaymentScreenshotPreview] = useState<string | null>(null);
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
@@ -30,9 +30,7 @@ export default function TicketPage() {
   const resolveQrCodeUrl = (raw?: string | null): string | null => {
     if (!raw) return null;
 
-    // Full URL
     if (raw.startsWith("http://") || raw.startsWith("https://")) {
-      // Rewrite localhost/127 to deployed API origin
       if (raw.includes("localhost") || raw.includes("127.0.0.1")) {
         try {
           const url = new URL(raw);
@@ -51,24 +49,54 @@ export default function TicketPage() {
       return raw;
     }
 
-    // Relative path from backend
     const origin = API_BASE_URL.replace(/\/api\/?$/, "");
     return `${origin}${raw}`;
   };
 
   const getQrCodeSrc = (t: Ticket): string | null => {
-    // 1) Try backend-provided qrCodeUrl (resolved to deployed origin)
     const resolved = resolveQrCodeUrl(t.qrCodeUrl);
     if (resolved) return resolved;
 
-    // 2) Fallback: generate QR via external API using accessKey
     if (t.accessKey) {
       const data = encodeURIComponent(t.accessKey);
-      // Using a public QR image API as a lightweight fallback
-      return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${data}`;
+      return `https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${data}`;
     }
 
     return null;
+  };
+
+  const getPaymentScreenshotUrl = (): string | null => {
+    if (paymentScreenshotPreview) return paymentScreenshotPreview;
+    
+    const ticketAny = ticket as any;
+    const screenshotUrl = 
+      ticketAny?.paymentScreenshotUrl ||
+      ticketAny?.payment?.screenshotUrl ||
+      ticketAny?.payment?.screenshotUrlFull;
+    
+    if (!screenshotUrl) return null;
+    
+    if (screenshotUrl.startsWith("http://") || screenshotUrl.startsWith("https://")) {
+      if (screenshotUrl.includes("localhost") || screenshotUrl.includes("127.0.0.1")) {
+        try {
+          const url = new URL(screenshotUrl);
+          const path = url.pathname || "";
+          const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+          return `${origin}${path}`;
+        } catch {
+          const uploadsIndex = screenshotUrl.indexOf("/uploads");
+          if (uploadsIndex !== -1) {
+            const path = screenshotUrl.substring(uploadsIndex);
+            const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+            return `${origin}${path}`;
+          }
+        }
+      }
+      return screenshotUrl;
+    }
+
+    const origin = API_BASE_URL.replace(/\/api\/?$/, "");
+    return `${origin}${screenshotUrl}`;
   };
 
   useEffect(() => {
@@ -108,13 +136,11 @@ export default function TicketPage() {
       return;
     }
 
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       showError("Please select a valid image file.");
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       showError("Image size should be less than 5MB.");
       return;
@@ -122,7 +148,6 @@ export default function TicketPage() {
 
     setPaymentScreenshot(file);
 
-    // Create preview
     const reader = new FileReader();
     reader.onload = (e) => {
       setPaymentScreenshotPreview(e.target?.result as string);
@@ -144,16 +169,6 @@ export default function TicketPage() {
     setIsSubmittingProof(true);
 
     try {
-      // Convert payment method to API format
-      const methodMap: Record<PaymentMethod, string> = {
-        bank: "bank_transfer",
-        easypaisa: "easypaisa",
-        jazzcash: "jazzcash",
-        other: "manual"
-      };
-      const apiMethod = methodMap[paymentMethod];
-
-      // Convert file to data URL
       const reader = new FileReader();
       reader.onload = async (event) => {
         try {
@@ -161,14 +176,13 @@ export default function TicketPage() {
           
           const response = await ticketsAPI.submitPayment(
             String(ticketId),
-            apiMethod,
+            paymentMethod,
             screenshotUri
           );
 
           if (response.success) {
             success("Payment screenshot submitted successfully! Your payment is under review.");
             
-            // Refresh ticket data
             try {
               const ticketResponse = await ticketsAPI.getTicketById(String(ticketId));
               if (ticketResponse.success && ticketResponse.ticket) {
@@ -178,7 +192,6 @@ export default function TicketPage() {
               // ignore
             }
 
-            // Reset form
             setPaymentScreenshot(null);
             setPaymentScreenshotPreview(null);
             if (fileInputRef.current) {
@@ -213,12 +226,84 @@ export default function TicketPage() {
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "confirmed":
+        return "#10B981";
+      case "pending_payment":
+        return "#DC2626";
+      case "payment_in_review":
+        return "#3B82F6";
+      case "used":
+        return "#6B7280";
+      case "cancelled":
+        return "#DC2626";
+      default:
+        return "#9CA3AF";
+    }
+  };
+
+  const getStatusBgColor = (status: string) => {
+    const color = getStatusColor(status);
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, 0.3)`;
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "confirmed":
+        return "CONFIRMED";
+      case "pending_payment":
+        return "PENDING PAYMENT";
+      case "payment_in_review":
+        return "IN REVIEW";
+      case "used":
+        return "USED";
+      case "cancelled":
+        return "CANCELLED";
+      default:
+        return status.toUpperCase().replace(/_/g, " ");
+    }
+  };
+
+  const formatDateShort = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    });
+  };
+
+  const formatTimestamp = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  };
+
+  const getPhoneNumber = () => {
+    const ticketAny = ticket as any;
+    return (
+      ticketAny?.event?.createdBy?.phone ||
+      ticketAny?.event?.phone ||
+      ticketAny?.organizer?.phone ||
+      null
+    );
+  };
+
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-background">
+      <div className="flex min-h-[60vh] items-center justify-center bg-white">
         <div className="space-y-3 text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent mx-auto" />
-          <p className="text-sm text-mutedLight">Loading ticket…</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
+          <p className="text-sm text-gray-600">Loading ticket…</p>
         </div>
       </div>
     );
@@ -226,14 +311,14 @@ export default function TicketPage() {
 
   if (error || !ticket) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-background px-4">
-        <p className="mb-4 text-base font-semibold text-danger">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-white px-4">
+        <p className="mb-4 text-base font-semibold text-[#EF4444]">
           {error ?? "Ticket not found."}
         </p>
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-[#B91C1C]"
         >
           Go back
         </button>
@@ -243,14 +328,14 @@ export default function TicketPage() {
 
   if (!user) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-background px-4">
-        <p className="mb-4 text-base font-semibold text-danger">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-white px-4">
+        <p className="mb-4 text-base font-semibold text-[#EF4444]">
           Please login to view your ticket.
         </p>
         <button
           type="button"
           onClick={() => router.push("/login")}
-          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-[#B91C1C]"
         >
           Login
         </button>
@@ -258,542 +343,888 @@ export default function TicketPage() {
     );
   }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric"
-    });
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "confirmed":
-        return "#10B981";
-      case "pending_payment":
-        return "#F59E0B";
-      case "payment_in_review":
-        return "#3B82F6";
-      case "used":
-        return "#6B7280";
-      case "cancelled":
-        return "#EF4444";
-      default:
-        return "#9CA3AF";
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "confirmed":
-        return "Confirmed";
-      case "pending_payment":
-        return "Pending payment";
-      case "payment_in_review":
-        return "Payment in review";
-      case "used":
-        return "Used";
-      case "cancelled":
-        return "Cancelled";
-      default:
-        return status;
-    }
-  };
+  const screenshotUrl = getPaymentScreenshotUrl();
+  const phoneNumber = getPhoneNumber();
+  const event = ticket.event as any;
+  const ticketPrice = event?.ticketPrice;
+  const showPaymentSection = ticket.status === "payment_in_review" || ticket.status === "pending_payment";
 
   return (
-    <div className="bg-background">
-      <div className="mx-auto max-w-xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="mb-4 text-sm text-mutedLight hover:text-white"
-        >
-          ← Back
-        </button>
+    <div className="bg-white min-h-screen">
+      {/* Mobile Layout */}
+      <div className="sm:hidden">
+        {/* Header */}
+        <div className="flex flex-row items-center justify-between pt-[60px] px-3 pb-5 bg-white" style={{ paddingTop: 'calc(60px + env(safe-area-inset-top))' }}>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="p-2"
+          >
+            <FiArrowLeft size={24} className="text-gray-900" />
+          </button>
+          <h1 className="text-gray-900 text-xl font-bold">Your Ticket</h1>
+          <div className="w-[30px]" />
+        </div>
 
-        <div className="overflow-hidden rounded-2xl bg-surface shadow-xl">
-          <div className="flex items-center border-b border-[#374151] px-5 py-4">
-            <div className="text-xl font-bold text-white">ticketly</div>
-          </div>
+        {/* Ticket Card */}
+        <div className="mx-[30px] mb-6">
+          <div className="bg-white rounded-xl relative border border-gray-200 shadow-lg">
+            {/* Perforated Left Edge */}
+            <div className="absolute left-0 top-0 bottom-0 w-3 bg-white" style={{
+              backgroundImage: 'repeating-linear-gradient(to bottom, transparent, transparent 4px, #E5E7EB 4px, #E5E7EB 8px)'
+            }} />
 
-          <div className="px-5 pt-4 flex items-center justify-between gap-3">
-            <span
-              className="inline-flex rounded-lg bg-[#111827] px-3 py-1.5 text-xs font-semibold"
-              style={{ color: getStatusColor(ticket.status) }}
-            >
-              {getStatusText(ticket.status)}
-            </span>
-            {ticket.accessKey && (
-              <div className="text-right">
-                <div className="text-[11px] font-semibold uppercase text-muted">
-                  Ticket number
-                </div>
-                <div className="font-mono text-xs text-white">
-                  {ticket.accessKey}
-                </div>
+            {/* Card Content */}
+            <div className="px-3 py-5" style={{ paddingLeft: 'calc(12px + 12px)' }}>
+              {/* Logo, Title, Description */}
+              <div className="flex flex-col items-center mb-3">
+                <span className="text-lg font-bold text-primary tracking-wide mb-2">ticketly</span>
+                <h2 className="text-[22px] font-bold text-gray-900 text-center uppercase tracking-wide mb-1">
+                  {event?.title || "Event"}
+                </h2>
+                <p className="text-[13px] text-gray-600 text-center">
+                  {event?.description
+                    ? (event.description.length > 50
+                        ? `${event.description.slice(0, 50)}...`
+                        : event.description)
+                    : "Join us for an unforgettable experience"}
+                </p>
               </div>
-            )}
-          </div>
 
-          <div className="space-y-4 px-5 pb-5 pt-4 text-sm text-[#D1D5DB]">
-            <div>
-              <h1 className="mb-1 text-2xl font-bold text-white">
-                {ticket.event?.title ?? "Event"}
-              </h1>
-              {ticket.organizer && (
-                <div className="text-sm font-semibold text-accent">
-                  by {ticket.organizer.fullName}
-                </div>
-              )}
-            </div>
+              {/* Dashed Divider */}
+              <div className="h-px border-t-2 border-primary border-dashed my-3.5 w-full" />
 
-            {ticket.event?.date && (
-              <div>
-                <div className="text-xs font-semibold text-muted">
-                  Date
-                </div>
-                <div className="text-white">
-                  {formatDate(ticket.event.date)}{" "}
-                  {ticket.event.time && `at ${ticket.event.time}`}
-                </div>
-              </div>
-            )}
-
-            {ticket.event?.location && (
-              <div>
-                <div className="text-xs font-semibold text-muted">
-                  Venue
-                </div>
-                <div className="text-white">{ticket.event.location}</div>
-              </div>
-            )}
-
-            {typeof ticket.event?.ticketPrice === "number" && (
-              <div>
-                <div className="text-xs font-semibold text-muted">
-                  Ticket price
-                </div>
-                <div className="text-white">
-                  PKR {ticket.event.ticketPrice.toLocaleString()}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div className="text-xs font-semibold text-muted">
-                Attendee
-              </div>
-              <div className="text-white">{ticket.username}</div>
-              <div className="text-white">{ticket.email}</div>
-              {ticket.phone && <div className="text-white">{ticket.phone}</div>}
-            </div>
-          </div>
-
-          {ticket.accessKey &&
-            ticket.status !== "confirmed" &&
-            ticket.status !== "cancelled" && (
-              <div className="border-t border-[#374151] px-5 py-8 flex flex-col items-center">
-                <div className="mb-3 text-center">
-                  <div className="text-base font-semibold text-white">
-                    Your ticket QR code
-                  </div>
-                  <p className="mt-1 text-xs text-muted">
-                    This code will be used to verify your entry at the event.
+              {/* User Information */}
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[13px] text-gray-800 mb-0.5">USER: {ticket.username}</p>
+                <p className="text-[13px] text-gray-800 mb-0.5">EMAIL: {ticket.email}</p>
+                {event?.location && (
+                  <p className="text-sm text-gray-900 leading-[22px]">
+                    LOCATION: {event.location}
                   </p>
+                )}
+              </div>
+
+              {/* Status, Date/Time/Price, QR Code Row */}
+              <div className="flex flex-row justify-between items-start mt-2 h-[90px]">
+                {/* Left: Date, Time, Price */}
+                <div className="h-full flex flex-col justify-center">
+                  {event?.date && (
+                    <p className="text-sm text-gray-900 leading-[22px]">
+                      • Date: {formatDateShort(event.date)}
+                    </p>
+                  )}
+                  {event?.time && (
+                    <p className="text-sm text-gray-900 leading-[22px]">
+                      • Time: {event.time}
+                    </p>
+                  )}
+                  {ticketPrice !== undefined && (
+                    <p className="text-sm text-gray-900 leading-[22px]">
+                      • Price: {ticketPrice.toLocaleString()} PKR
+                    </p>
+                  )}
                 </div>
 
-                {getQrCodeSrc(ticket) ? (
-                  <div className="mb-3 inline-block rounded-xl bg-white p-4">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={getQrCodeSrc(ticket) as string}
-                      alt="Ticket QR code"
-                      className="h-44 w-44 object-contain"
-                    />
+                {/* Center: Status Stamp */}
+                <div className="flex-1 relative">
+                  <div
+                    className="absolute -top-3 right-2 border-[1px] border-dashed py-2 px-3 rotate-[-8deg] whitespace-nowrap"
+                    style={{
+                      borderColor: getStatusColor(ticket.status),
+                      backgroundColor: getStatusBgColor(ticket.status)
+                    }}
+                  >
+                    <span
+                      className="text-xs font-bold tracking-wide whitespace-nowrap w-full max-h-[18px] block"
+                      style={{ color: getStatusColor(ticket.status) }}
+                    >
+                      {getStatusText(ticket.status)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right: QR Code */}
+                {ticket.status === "confirmed" && ticket.accessKey ? (
+                  <div className="ml-4">
+                    <div className="bg-white p-2 rounded-lg border border-primary">
+                      {getQrCodeSrc(ticket) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={getQrCodeSrc(ticket) as string}
+                          alt="QR Code"
+                          className="w-[70px] h-[70px]"
+                        />
+                      ) : (
+                        <div className="w-[70px] h-[70px] bg-gray-100 rounded flex items-center justify-center">
+                          <span className="text-[10px] text-gray-500 text-center max-w-[70px]">
+                            QR code is given after payment confirmed
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <div className="mb-3 inline-block rounded-xl bg-white p-4">
-                    <div className="flex h-44 w-44 flex-col items-center justify-center gap-2 rounded-lg bg-[#F3F4F6] px-2 text-center">
-                      <div className="text-xs font-bold text-[#6B7280]">
-                        Ticket number
-                      </div>
-                      <div className="break-all text-[10px] font-mono text-[#4B5563]">
-                        {ticket.accessKey}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {ticket.status === "pending_payment" && (
-                  <div className="mt-1 rounded-lg bg-[#F59E0B]/15 px-4 py-2">
-                    <p className="text-center text-[11px] font-semibold text-[#FBBF24]">
-                      Complete payment to activate this ticket.
-                    </p>
+                  <div className="ml-4 bg-gray-100 p-3 rounded-lg border border-gray-200 min-w-[70px] min-h-[70px] flex items-center justify-center">
+                    <span className="text-[10px] text-gray-500 text-center max-w-[70px]">
+                      QR code is given after payment confirmed
+                    </span>
                   </div>
                 )}
               </div>
-            )}
 
-          {ticket.status === "confirmed" && (
-            <div className="border-t border-[#374151] px-5 py-5 text-center">
-              <div className="mb-3 text-base font-semibold text-white">
-                Scan at entry
-              </div>
-              {getQrCodeSrc(ticket) ? (
-                <div className="mx-auto mb-3 inline-block rounded-xl bg-white p-5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={getQrCodeSrc(ticket) as string}
-                    alt="QR code"
-                    className="h-48 w-48"
-                  />
-                </div>
-              ) : ticket.accessKey ? (
-                <div className="mx-auto mb-3 inline-block rounded-xl bg-white p-5">
-                  <div className="flex h-48 w-48 flex-col items-center justify-center gap-2 rounded-lg bg-[#F3F4F6] px-2 text-center">
-                    <div className="text-sm font-bold text-[#6B7280]">
-                      Access key
-                    </div>
-                    <div className="break-all text-[10px] font-mono text-[#4B5563]">
-                      {ticket.accessKey}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-              <p className="text-xs text-muted">
-                Please arrive 15 minutes before the event starts.
-              </p>
-            </div>
-          )}
+              {/* Dashed Divider */}
+              <div className="h-px border-t-2 border-primary border-dashed my-3.5 w-full" />
 
-          {ticket.status === "pending_payment" && (
-            <div className="border-t border-[#374151] bg-black/40 px-5 py-5">
-              <div className="mb-3 text-center">
-                <div className="text-base font-semibold text-[#FBBF24]">
-                  Payment Pending
-                </div>
-                <p className="mt-1 text-sm text-[#E5E7EB]">
-                  Please upload a screenshot of your payment to confirm your
-                  ticket.
+              {/* Timestamp & Access Key */}
+              {ticket.createdAt && (
+                <p className="text-[11px] text-gray-500 mt-3.5 mb-1">
+                  {formatTimestamp(ticket.createdAt)}
                 </p>
-              </div>
-
-              <div className="space-y-4 text-left text-sm text-[#D1D5DB]">
-                <div>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Payment method
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap sm:gap-3">
-                    {[
-                      { key: "bank", label: "Bank" },
-                      { key: "easypaisa", label: "EasyPaisa" },
-                      { key: "jazzcash", label: "JazzCash" },
-                      { key: "other", label: "Other" }
-                    ].map((option) => (
-                      <button
-                        key={option.key}
-                        type="button"
-                        onClick={() =>
-                          setPaymentMethod(option.key as PaymentMethod)
-                        }
-                        className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
-                          paymentMethod === option.key
-                            ? "bg-accent text-white"
-                            : "bg-[#111827] text-mutedLight hover:bg-[#1F2937]"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  {(() => {
-                    const phoneNumber =
-                      (ticket.event as any)?.createdBy?.phone ||
-                      (ticket.event as any)?.phone ||
-                      (ticket.organizer as any)?.phone;
-                    if (!phoneNumber) return null;
-                    return (
-                      <p className="mt-2 text-xs text-muted">
-                        Send payment to:{" "}
-                        <span className="font-mono text-[#F9FAFB]">
-                          {phoneNumber}
-                        </span>
-                      </p>
-                    );
-                  })()}
-                </div>
-
-                <div>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Payment screenshot
-                  </div>
-                  {paymentScreenshotPreview ? (
-                    <div className="space-y-3">
-                      <div className="relative rounded-2xl border border-[#4B5563] bg-[#020617] p-4">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={paymentScreenshotPreview}
-                          alt="Payment screenshot preview"
-                          className="mx-auto max-h-64 rounded-lg object-contain"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentScreenshot(null);
-                            setPaymentScreenshotPreview(null);
-                            if (fileInputRef.current) {
-                              fileInputRef.current.value = "";
-                            }
-                          }}
-                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
-                          aria-label="Remove screenshot"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <div className="text-xs text-muted">
-                        Selected: {paymentScreenshot?.name}
-                      </div>
-                    </div>
-                  ) : (
-                    <label className="block cursor-pointer rounded-2xl border border-dashed border-[#4B5563] bg-[#020617] px-4 py-6 text-center text-xs text-muted hover:border-accent/80 hover:bg-[#020617]/80 transition-colors">
-                      <div className="mb-2 text-3xl">🖼️</div>
-                      <div className="font-semibold text-[#E5E7EB]">
-                        Tap to select payment screenshot
-                      </div>
-                      <div className="mt-1 text-[11px] text-muted">
-                        JPEG, PNG, GIF, or WebP (Max 5MB)
-                      </div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleScreenshotChange}
-                      />
-                    </label>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isSubmittingProof || !paymentScreenshot}
-                  onClick={handleSubmitPayment}
-                  className={`mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                    isSubmittingProof || !paymentScreenshot
-                      ? "bg-[#1F2937] text-[#6B7280] cursor-not-allowed"
-                      : "bg-accent text-white hover:bg-accent/90"
-                  }`}
-                >
-                  {isSubmittingProof ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      Submitting...
-                    </span>
-                  ) : (
-                    "Submit payment"
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {ticket.status === "payment_in_review" && (
-            <div className="border-t border-[#374151] bg-black/40 px-5 py-5">
-              <div className="mb-3 text-center">
-                <div className="text-base font-semibold text-[#3B82F6]">
-                  Payment in review
-                </div>
-                <p className="mt-1 text-sm text-[#E5E7EB]">
-                  Your payment screenshot has been submitted. Our team is
-                  reviewing it. You will receive a confirmation soon.
+              )}
+              {ticket.status === "confirmed" && ticket.accessKey ? (
+                <p className="text-[11px] text-primary font-semibold">
+                  ACCESS KEY: {ticket.accessKey}
                 </p>
-              </div>
-
-              <div className="space-y-4 text-left text-sm text-[#D1D5DB]">
-                <div>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Payment method
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap sm:gap-3">
-                    {[
-                      { key: "bank", label: "Bank" },
-                      { key: "easypaisa", label: "EasyPaisa" },
-                      { key: "jazzcash", label: "JazzCash" },
-                      { key: "other", label: "Other" }
-                    ].map((option) => (
-                      <button
-                        key={option.key}
-                        type="button"
-                        onClick={() =>
-                          setPaymentMethod(option.key as PaymentMethod)
-                        }
-                        className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
-                          paymentMethod === option.key
-                            ? "bg-accent text-black"
-                            : "bg-[#111827] text-mutedLight hover:bg-[#1F2937]"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  {(() => {
-                    const phoneNumber =
-                      (ticket.event as any)?.createdBy?.phone ||
-                      (ticket.event as any)?.phone ||
-                      (ticket.organizer as any)?.phone;
-                    if (!phoneNumber) {
-                      return (
-                        <p className="mt-2 text-xs text-muted">
-                          If you paid with the wrong method, you can update your
-                          screenshot below.
-                        </p>
-                      );
-                    }
-                    return (
-                      <p className="mt-2 text-xs text-muted">
-                        Send payment to:{" "}
-                        <span className="font-mono text-[#F9FAFB]">
-                          {phoneNumber}
-                        </span>
-                      </p>
-                    );
-                  })()}
-                </div>
-
-                <div>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Current screenshot
-                  </div>
-                  {((ticket as any).paymentScreenshotUrl ||
-                    (ticket as any).payment?.screenshotUrl ||
-                    (ticket as any).payment?.screenshotUrlFull) && (
-                    <div className="mb-3 rounded-2xl border border-[#4B5563] bg-[#020617] p-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={
-                          (ticket as any).paymentScreenshotUrl ||
-                          (ticket as any).payment?.screenshotUrlFull ||
-                          (ticket as any).payment?.screenshotUrl
-                        }
-                        alt="Current payment screenshot"
-                        className="mx-auto max-h-64 rounded-lg object-contain"
-                      />
-                      <p className="mt-2 text-[11px] text-muted">
-                        This is the screenshot currently attached to your
-                        payment. You can upload a new one below if needed.
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Upload new screenshot (optional)
-                  </div>
-                  {paymentScreenshotPreview ? (
-                    <div className="space-y-3">
-                      <div className="relative rounded-2xl border border-[#4B5563] bg-[#020617] p-4">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={paymentScreenshotPreview}
-                          alt="Payment screenshot preview"
-                          className="mx-auto max-h-64 rounded-lg object-contain"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentScreenshot(null);
-                            setPaymentScreenshotPreview(null);
-                            if (fileInputRef.current) {
-                              fileInputRef.current.value = "";
-                            }
-                          }}
-                          className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
-                          aria-label="Remove screenshot"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <div className="text-xs text-muted">
-                        Selected: {paymentScreenshot?.name}
-                      </div>
-                    </div>
-                  ) : (
-                    <label className="block cursor-pointer rounded-2xl border border-dashed border-[#4B5563] bg-[#020617] px-4 py-6 text-center text-xs text-muted hover:border-accent/80 hover:bg-[#020617]/80 transition-colors">
-                      <div className="mb-2 text-3xl">🖼️</div>
-                      <div className="font-semibold text-[#E5E7EB]">
-                        Tap to select a new payment screenshot
-                      </div>
-                      <div className="mt-1 text-[11px] text-muted">
-                        JPEG, PNG, GIF, or WebP (Max 5MB)
-                      </div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleScreenshotChange}
-                      />
-                    </label>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isSubmittingProof || !paymentScreenshot}
-                  onClick={handleSubmitPayment}
-                  className={`mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                    isSubmittingProof || !paymentScreenshot
-                      ? "bg-[#1F2937] text-[#6B7280] cursor-not-allowed"
-                      : "bg-accent text-white hover:bg-accent/90"
-                  }`}
-                >
-                  {isSubmittingProof ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      Updating...
-                    </span>
-                  ) : (
-                    "Update payment screenshot"
-                  )}
-                </button>
-              </div>
+              ) : (
+                <p className="text-[11px] text-gray-500 italic">
+                  Access key is given after payment confirmed
+                </p>
+              )}
             </div>
-          )}
-
-          <div className="border-t border-[#374151] bg-[#050505] px-5 py-4 text-center text-[11px] text-muted">
-            <p>This ticket is valid for one person only.</p>
-            <p>For support, contact: support@ticketly.com</p>
           </div>
         </div>
 
+        {/* Payment Section */}
+        {showPaymentSection && (
+          <div className="mx-3 mt-4 mb-6 bg-white rounded-2xl p-5 border border-gray-200">
+            {ticket.status === "payment_in_review" && (
+              <div>
+                {/* Status Message */}
+                <div className="flex flex-col items-center mb-4">
+                  <h3 className="text-gray-900 text-base font-semibold mb-2">In Review</h3>
+                  <p className="text-gray-900 text-sm text-start mb-1">
+                    Your payment screenshot has been submitted successfully.
+                  </p>
+                  <p className="text-gray-900 text-sm text-start mb-1">
+                    Our team will verify your payment within 24-48 hours.
+                  </p>
+                  <p className="text-gray-900 text-sm text-start mb-1">
+                    You can update the screenshot until verification is complete.
+                  </p>
+                </div>
+
+                {/* Payment Method Selection */}
+                <div className="mb-4">
+                  <label className="text-gray-900 text-xs mb-2 block">Payment Method</label>
+                  <div className="flex flex-row gap-2">
+                    {[
+                      { key: "bank_transfer", label: "Bank" },
+                      { key: "easypaisa", label: "EasyPaisa" },
+                      { key: "jazzcash", label: "JazzCash" },
+                      { key: "other", label: "Other" }
+                    ].map((method) => (
+                      <button
+                        key={method.key}
+                        type="button"
+                        onClick={() => setPaymentMethod(method.key as PaymentMethod)}
+                        className={`px-3 py-2 rounded-lg border ${
+                          paymentMethod === method.key
+                            ? "bg-primary border-primary"
+                            : "bg-gray-100 border-gray-200"
+                        }`}
+                      >
+                        <span
+                          className={`text-xs font-semibold ${
+                            paymentMethod === method.key ? "text-white" : "text-[#9CA3AF]"
+                          }`}
+                        >
+                          {method.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Phone Number */}
+                {phoneNumber && (
+                  <div className="mt-3">
+                    <p className="text-gray-900 text-xs mb-1">
+                      Send payment to: {phoneNumber}
+                    </p>
+                  </div>
+                )}
+
+                {/* Screenshot Display/Update */}
+                <div className="mb-4">
+                  <label className="text-gray-900 text-xs mb-2 block">Payment Screenshot</label>
+                  {screenshotUrl ? (
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={screenshotUrl}
+                        alt="Payment screenshot"
+                        className="w-full h-[200px] rounded-xl object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentScreenshot(null);
+                          setPaymentScreenshotPreview(null);
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = "";
+                          }
+                        }}
+                        className="absolute top-2 right-2 bg-[#EF4444] p-2 rounded-full"
+                      >
+                        <FiX size={20} className="text-white" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute bottom-2 right-2 bg-primary px-3 py-1.5 rounded-lg flex flex-row items-center"
+                      >
+                        <FiEdit size={16} className="text-white mr-1" />
+                        <span className="text-white text-xs font-semibold">Update</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-[#374151] rounded-xl p-8 flex flex-col items-center justify-center bg-[#0F0F0F] w-full"
+                    >
+                      <FiImage size={48} className="text-[#9CA3AF] mb-2" />
+                      <span className="text-[#9CA3AF] text-sm mt-2 text-center">
+                        Tap to select payment screenshot
+                      </span>
+                      <span className="text-[#6B7280] text-xs mt-1 text-center">
+                        JPEG, PNG, GIF, or WebP (Max 5MB)
+                      </span>
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleScreenshotChange}
+                  />
+                </div>
+
+                {/* Update Button */}
+                <button
+                  type="button"
+                  onClick={handleSubmitPayment}
+                  disabled={isSubmittingProof || !paymentScreenshot}
+                  className={`py-4 rounded-xl flex items-center justify-center w-full ${
+                    isSubmittingProof || !paymentScreenshot
+                      ? "bg-[#374151] opacity-50"
+                      : "bg-primary"
+                  }`}
+                >
+                  {isSubmittingProof ? (
+                    <div className="flex flex-row items-center">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      <span className="text-white text-base font-semibold ml-2">Updating...</span>
+                    </div>
+                  ) : (
+                    <span className="text-white text-base font-semibold">Update Screenshot</span>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {ticket.status === "pending_payment" && (
+              <div>
+                {/* Status Message */}
+                <h3 className="text-[#F59E0B] text-base font-semibold mb-2 text-center">
+                  Payment Pending
+                </h3>
+                <p className="text-[#9CA3AF] text-sm text-center mb-4">
+                  Please upload a screenshot of your payment to confirm your ticket.
+                </p>
+
+                {/* Payment Method Selection */}
+                <div className="mb-4">
+                  <label className="text-[#9CA3AF] text-xs mb-2 block">Payment Method</label>
+                  <div className="flex flex-row gap-2">
+                    {[
+                      { key: "bank_transfer", label: "Bank" },
+                      { key: "easypaisa", label: "EasyPaisa" },
+                      { key: "jazzcash", label: "JazzCash" },
+                      { key: "other", label: "Other" }
+                    ].map((method) => (
+                      <button
+                        key={method.key}
+                        type="button"
+                        onClick={() => setPaymentMethod(method.key as PaymentMethod)}
+                        className={`px-3 py-2 rounded-lg border ${
+                          paymentMethod === method.key
+                            ? "bg-primary border-primary"
+                            : "bg-gray-100 border-gray-200"
+                        }`}
+                      >
+                        <span
+                          className={`text-xs font-semibold ${
+                            paymentMethod === method.key ? "text-white" : "text-[#9CA3AF]"
+                          }`}
+                        >
+                          {method.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Phone Number */}
+                {phoneNumber && (
+                  <div className="mt-3">
+                    <p className="text-[#9CA3AF] text-xs mb-1">
+                      Send payment to: {phoneNumber}
+                    </p>
+                  </div>
+                )}
+
+                {/* Screenshot Selection */}
+                <div className="mb-4">
+                  <label className="text-[#9CA3AF] text-xs mb-2 block">Payment Screenshot</label>
+                  {paymentScreenshotPreview ? (
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={paymentScreenshotPreview}
+                        alt="Payment screenshot preview"
+                        className="w-full h-[200px] rounded-xl object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentScreenshot(null);
+                          setPaymentScreenshotPreview(null);
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = "";
+                          }
+                        }}
+                        className="absolute top-2 right-2 bg-[#EF4444] p-2 rounded-full"
+                      >
+                        <FiX size={20} className="text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-[#374151] rounded-xl p-8 flex flex-col items-center justify-center bg-[#0F0F0F] w-full"
+                    >
+                      <FiImage size={48} className="text-gray-200 mb-2" />
+                      <span className="text-gray-200 text-sm mt-2 text-center">
+                        Tap to select payment screenshot
+                      </span>
+                      <div className="mt-2 w-full items-start px-4">
+                        <p className="text-gray-300 text-xs">• JPEG, PNG, GIF, or WebP</p>
+                        <p className="text-gray-300 text-xs">• Max 5MB</p>
+                      </div>
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleScreenshotChange}
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="button"
+                  onClick={handleSubmitPayment}
+                  disabled={isSubmittingProof || !paymentScreenshot}
+                  className={`py-4 rounded-xl flex items-center justify-center w-full ${
+                    isSubmittingProof || !paymentScreenshot
+                      ? "bg-[#374151] opacity-50"
+                      : "bg-primary"
+                  }`}
+                >
+                  {isSubmittingProof ? (
+                    <div className="flex flex-row items-center">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      <span className="text-white text-base font-semibold ml-2">Submitting...</span>
+                    </div>
+                  ) : (
+                    <span className="text-white text-base font-semibold">Submit Payment</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ticket Footer */}
+        <div className="mx-3 mb-6 p-5 rounded-2xl bg-gray-100 border border-gray-200">
+          <p className="text-gray-700 text-xs text-center mb-1">
+            This ticket is valid for one person only
+          </p>
+          <p className="text-gray-700 text-xs text-center mb-1">
+            For support, contact: support@ticketly.com
+          </p>
+        </div>
+
+        {/* Action Buttons */}
         {ticket.status === "confirmed" && (
-          <div className="mt-4 flex gap-3">
+          <div className="flex flex-row gap-3 px-3" style={{ paddingBottom: 'calc(40px + env(safe-area-inset-bottom))' }}>
             <button
               type="button"
-              onClick={() =>
-                info("Ticket download feature will be available soon.")
-              }
-              className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90"
+              onClick={() => info("Ticket download feature coming soon!")}
+              className="flex-1 bg-primary py-4 rounded-xl flex items-center justify-center"
             >
-              Download ticket
+              <span className="text-white text-base font-semibold">Download Ticket</span>
             </button>
             <button
               type="button"
-              onClick={() =>
-                info("Ticket sharing feature will be available soon.")
-              }
-              className="flex-1 rounded-xl border border-border bg-[#111827] px-4 py-2.5 text-sm font-semibold text-white hover:border-accent"
+              onClick={() => info("Ticket sharing feature coming soon!")}
+              className="flex-1 bg-gray-100 border border-gray-200 py-4 rounded-xl flex items-center justify-center"
             >
-              Share
+              <span className="text-gray-900 text-base font-semibold">Share</span>
             </button>
           </div>
         )}
       </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden sm:block">
+        <div className="mx-auto max-w-2xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
+          {/* Header */}
+          <div className="flex flex-row items-center justify-between mb-6">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="p-2"
+            >
+              <FiArrowLeft size={24} className="text-gray-900" />
+            </button>
+            <h1 className="text-gray-900 text-xl font-bold">Your Ticket</h1>
+            <div className="w-[30px]" />
+          </div>
+
+          {/* Ticket Card */}
+          <div className="mb-6">
+            <div className="bg-white rounded-xl relative border border-gray-200 shadow-lg">
+              {/* Perforated Left Edge */}
+              <div className="absolute left-0 top-0 bottom-0 w-3 bg-white" style={{
+                backgroundImage: 'repeating-linear-gradient(to bottom, transparent, transparent 4px, #E5E7EB 4px, #E5E7EB 8px)'
+              }} />
+
+              {/* Card Content */}
+              <div className="px-3 py-5" style={{ paddingLeft: 'calc(12px + 12px)' }}>
+                {/* Logo, Title, Description */}
+                <div className="flex flex-col items-center mb-3">
+                  <span className="text-lg font-bold text-primary tracking-wide mb-2">ticketly</span>
+                  <h2 className="text-[22px] font-bold text-gray-900 text-center uppercase tracking-wide mb-1">
+                    {event?.title || "Event"}
+                  </h2>
+                  <p className="text-[13px] text-gray-600 text-center">
+                    {event?.description
+                      ? (event.description.length > 50
+                          ? `${event.description.slice(0, 50)}...`
+                          : event.description)
+                      : "Join us for an unforgettable experience"}
+                  </p>
+                </div>
+
+                {/* Dashed Divider */}
+                <div className="h-px border-t-2 border-primary border-dashed my-3.5 w-full" />
+
+                {/* User Information */}
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[13px] text-gray-800 mb-0.5">USER: {ticket.username}</p>
+                  <p className="text-[13px] text-gray-800 mb-0.5">EMAIL: {ticket.email}</p>
+                  {event?.location && (
+                    <p className="text-sm text-gray-900 leading-[22px]">
+                      LOCATION: {event.location}
+                    </p>
+                  )}
+                </div>
+
+                {/* Status, Date/Time/Price, QR Code Row */}
+                <div className="flex flex-row justify-between items-start mt-2 h-[90px]">
+                  {/* Left: Date, Time, Price */}
+                  <div className="h-full flex flex-col justify-center">
+                    {event?.date && (
+                      <p className="text-sm text-gray-900 leading-[22px]">
+                        • Date: {formatDateShort(event.date)}
+                      </p>
+                    )}
+                    {event?.time && (
+                      <p className="text-sm text-gray-900 leading-[22px]">
+                        • Time: {event.time}
+                      </p>
+                    )}
+                    {ticketPrice !== undefined && (
+                      <p className="text-sm text-gray-900 leading-[22px]">
+                        • Price: {ticketPrice.toLocaleString()} PKR
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Center: Status Stamp */}
+                  <div className="flex-1 relative">
+                    <div
+                      className="absolute -top-3 right-2 border-[1px] border-dashed py-2 px-3 rotate-[-8deg] whitespace-nowrap"
+                      style={{
+                        borderColor: getStatusColor(ticket.status),
+                        backgroundColor: getStatusBgColor(ticket.status)
+                      }}
+                    >
+                      <span
+                        className="text-xs font-bold tracking-wide whitespace-nowrap w-full max-h-[18px] block"
+                        style={{ color: getStatusColor(ticket.status) }}
+                      >
+                        {getStatusText(ticket.status)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Right: QR Code */}
+                  {ticket.status === "confirmed" && ticket.accessKey ? (
+                    <div className="ml-4">
+                      <div className="bg-white p-2 rounded-lg border border-primary">
+                        {getQrCodeSrc(ticket) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={getQrCodeSrc(ticket) as string}
+                            alt="QR Code"
+                            className="w-[70px] h-[70px]"
+                          />
+                        ) : (
+                          <div className="w-[70px] h-[70px] bg-gray-100 rounded flex items-center justify-center">
+                            <span className="text-[10px] text-gray-500 text-center max-w-[70px]">
+                              QR code is given after payment confirmed
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="ml-4 bg-gray-100 p-3 rounded-lg border border-gray-200 min-w-[70px] min-h-[70px] flex items-center justify-center">
+                      <span className="text-[10px] text-gray-500 text-center max-w-[70px]">
+                        QR code is given after payment confirmed
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dashed Divider */}
+                <div className="h-px border-t-2 border-primary border-dashed my-3.5 w-full" />
+
+                {/* Timestamp & Access Key */}
+                {ticket.createdAt && (
+                  <p className="text-[11px] text-gray-500 mt-3.5 mb-1">
+                    {formatTimestamp(ticket.createdAt)}
+                  </p>
+                )}
+                {ticket.status === "confirmed" && ticket.accessKey ? (
+                  <p className="text-[11px] text-primary font-semibold">
+                    ACCESS KEY: {ticket.accessKey}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-gray-500 italic">
+                    Access key is given after payment confirmed
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Section */}
+          {showPaymentSection && (
+            <div className="mb-6 bg-white rounded-2xl p-5 border border-gray-200">
+              {/* Same payment section content as mobile */}
+              {ticket.status === "payment_in_review" && (
+                <div>
+                  <div className="flex flex-col items-center mb-4">
+                    <h3 className="text-gray-900 text-base font-semibold mb-2">In Review</h3>
+                    <p className="text-gray-900 text-sm text-start mb-1">
+                      Your payment screenshot has been submitted successfully.
+                    </p>
+                    <p className="text-gray-900 text-sm text-start mb-1">
+                      Our team will verify your payment within 24-48 hours.
+                    </p>
+                    <p className="text-gray-900 text-sm text-start mb-1">
+                      You can update the screenshot until verification is complete.
+                    </p>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="text-gray-900 text-xs mb-2 block">Payment Method</label>
+                    <div className="flex flex-row gap-2">
+                      {[
+                        { key: "bank_transfer", label: "Bank" },
+                        { key: "easypaisa", label: "EasyPaisa" },
+                        { key: "jazzcash", label: "JazzCash" },
+                        { key: "other", label: "Other" }
+                      ].map((method) => (
+                        <button
+                          key={method.key}
+                          type="button"
+                          onClick={() => setPaymentMethod(method.key as PaymentMethod)}
+                          className={`px-3 py-2 rounded-lg border ${
+                            paymentMethod === method.key
+                              ? "bg-primary border-primary"
+                              : "bg-gray-100 border-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`text-xs font-semibold ${
+                              paymentMethod === method.key ? "text-white" : "text-[#9CA3AF]"
+                            }`}
+                          >
+                            {method.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {phoneNumber && (
+                    <div className="mt-3">
+                      <p className="text-gray-900 text-xs mb-1">
+                        Send payment to: {phoneNumber}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mb-4">
+                    <label className="text-gray-900 text-xs mb-2 block">Payment Screenshot</label>
+                    {screenshotUrl ? (
+                      <div className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={screenshotUrl}
+                          alt="Payment screenshot"
+                          className="w-full h-[200px] rounded-xl object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentScreenshot(null);
+                            setPaymentScreenshotPreview(null);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = "";
+                            }
+                          }}
+                          className="absolute top-2 right-2 bg-[#EF4444] p-2 rounded-full"
+                        >
+                          <FiX size={20} className="text-white" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="absolute bottom-2 right-2 bg-primary px-3 py-1.5 rounded-lg flex flex-row items-center"
+                        >
+                          <FiEdit size={16} className="text-white mr-1" />
+                          <span className="text-white text-xs font-semibold">Update</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-[#374151] rounded-xl p-8 flex flex-col items-center justify-center bg-[#0F0F0F] w-full"
+                      >
+                        <FiImage size={48} className="text-[#9CA3AF] mb-2" />
+                        <span className="text-[#9CA3AF] text-sm mt-2 text-center">
+                          Tap to select payment screenshot
+                        </span>
+                        <span className="text-[#6B7280] text-xs mt-1 text-center">
+                          JPEG, PNG, GIF, or WebP (Max 5MB)
+                        </span>
+                      </button>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleScreenshotChange}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSubmitPayment}
+                    disabled={isSubmittingProof || !paymentScreenshot}
+                    className={`py-4 rounded-xl flex items-center justify-center w-full ${
+                      isSubmittingProof || !paymentScreenshot
+                        ? "bg-[#374151] opacity-50"
+                        : "bg-primary"
+                    }`}
+                  >
+                    {isSubmittingProof ? (
+                      <div className="flex flex-row items-center">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <span className="text-white text-base font-semibold ml-2">Updating...</span>
+                      </div>
+                    ) : (
+                      <span className="text-white text-base font-semibold">Update Screenshot</span>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {ticket.status === "pending_payment" && (
+                <div>
+                  <h3 className="text-[#F59E0B] text-base font-semibold mb-2 text-center">
+                    Payment Pending
+                  </h3>
+                  <p className="text-[#9CA3AF] text-sm text-center mb-4">
+                    Please upload a screenshot of your payment to confirm your ticket.
+                  </p>
+
+                  <div className="mb-4">
+                    <label className="text-[#9CA3AF] text-xs mb-2 block">Payment Method</label>
+                    <div className="flex flex-row gap-2">
+                      {[
+                        { key: "bank_transfer", label: "Bank" },
+                        { key: "easypaisa", label: "EasyPaisa" },
+                        { key: "jazzcash", label: "JazzCash" },
+                        { key: "other", label: "Other" }
+                      ].map((method) => (
+                        <button
+                          key={method.key}
+                          type="button"
+                          onClick={() => setPaymentMethod(method.key as PaymentMethod)}
+                          className={`px-3 py-2 rounded-lg border ${
+                            paymentMethod === method.key
+                              ? "bg-primary border-primary"
+                              : "bg-gray-100 border-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`text-xs font-semibold ${
+                              paymentMethod === method.key ? "text-white" : "text-[#9CA3AF]"
+                            }`}
+                          >
+                            {method.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {phoneNumber && (
+                    <div className="mt-3">
+                      <p className="text-[#9CA3AF] text-xs mb-1">
+                        Send payment to: {phoneNumber}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mb-4">
+                    <label className="text-[#9CA3AF] text-xs mb-2 block">Payment Screenshot</label>
+                    {paymentScreenshotPreview ? (
+                      <div className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={paymentScreenshotPreview}
+                          alt="Payment screenshot preview"
+                          className="w-full h-[200px] rounded-xl object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentScreenshot(null);
+                            setPaymentScreenshotPreview(null);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = "";
+                            }
+                          }}
+                          className="absolute top-2 right-2 bg-[#EF4444] p-2 rounded-full"
+                        >
+                          <FiX size={20} className="text-white" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-[#374151] rounded-xl p-8 flex flex-col items-center justify-center bg-[#0F0F0F] w-full"
+                      >
+                        <FiImage size={48} className="text-gray-200 mb-2" />
+                        <span className="text-gray-200 text-sm mt-2 text-center">
+                          Tap to select payment screenshot
+                        </span>
+                        <div className="mt-2 w-full items-start px-4">
+                          <p className="text-gray-300 text-xs">• JPEG, PNG, GIF, or WebP</p>
+                          <p className="text-gray-300 text-xs">• Max 5MB</p>
+                        </div>
+                      </button>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleScreenshotChange}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSubmitPayment}
+                    disabled={isSubmittingProof || !paymentScreenshot}
+                    className={`py-4 rounded-xl flex items-center justify-center w-full ${
+                      isSubmittingProof || !paymentScreenshot
+                        ? "bg-[#374151] opacity-50"
+                        : "bg-primary"
+                    }`}
+                  >
+                    {isSubmittingProof ? (
+                      <div className="flex flex-row items-center">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <span className="text-white text-base font-semibold ml-2">Submitting...</span>
+                      </div>
+                    ) : (
+                      <span className="text-white text-base font-semibold">Submit Payment</span>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ticket Footer */}
+          <div className="mb-6 p-5 rounded-2xl bg-gray-100 border border-gray-200">
+            <p className="text-gray-700 text-xs text-center mb-1">
+              This ticket is valid for one person only
+            </p>
+            <p className="text-gray-700 text-xs text-center mb-1">
+              For support, contact: support@ticketly.com
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          {ticket.status === "confirmed" && (
+            <div className="flex flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => info("Ticket download feature coming soon!")}
+                className="flex-1 bg-primary py-4 rounded-xl flex items-center justify-center"
+              >
+                <span className="text-white text-base font-semibold">Download Ticket</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => info("Ticket sharing feature coming soon!")}
+                className="flex-1 bg-gray-100 border border-gray-200 py-4 rounded-xl flex items-center justify-center"
+              >
+                <span className="text-gray-900 text-base font-semibold">Share</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
-
-
