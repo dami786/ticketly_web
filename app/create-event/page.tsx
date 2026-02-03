@@ -17,6 +17,7 @@ import {
 import { authAPI } from "../../lib/api/auth";
 import { eventsAPI } from "../../lib/api/events";
 import { useToast } from "../../lib/hooks/useToast";
+import { getEventImageUrl } from "../../lib/utils/images";
 import { useAppStore } from "../../store/useAppStore";
 
 interface EventFormData {
@@ -132,35 +133,25 @@ export default function CreateEventPage() {
 
     setUploadingImage(true);
     try {
-      const compressedImage = await compressImage(file, 1920, 0.75);
-      const base64Size = compressedImage.length;
-      
-      if (base64Size > 1 * 1024 * 1024) {
-        const moreCompressed = await compressImage(file, 1280, 0.6);
-        const moreCompressedSize = moreCompressed.length;
-        
-        if (moreCompressedSize > 1 * 1024 * 1024) {
-          const finalCompressed = await compressImage(file, 1024, 0.5);
-          const finalSize = finalCompressed.length;
-          
-          if (finalSize > 1.2 * 1024 * 1024) {
-            warning("Image is still too large. Please select a smaller image.");
-      return;
-    }
-          
-          setImagePreview(finalCompressed);
-          update("imageUrl", finalCompressed);
-        } else {
-          setImagePreview(moreCompressed);
-          update("imageUrl", moreCompressed);
-        }
-      } else {
-        setImagePreview(compressedImage);
-        update("imageUrl", compressedImage);
+      // Optional: compress before upload to reduce size
+      let fileToUpload = file;
+      const compressedDataUrl = await compressImage(file, 1920, 0.75);
+      if (compressedDataUrl.length < file.size * 1.2) {
+        const res = await fetch(compressedDataUrl);
+        const blob = await res.blob();
+        fileToUpload = new File([blob], file.name, { type: "image/jpeg" });
       }
-    } catch (error) {
-      warning("Failed to process image. Please try again.");
-      console.error("Image compression error:", error);
+      const { imageUrl } = await eventsAPI.uploadEventImage(fileToUpload);
+      if (!imageUrl?.trim()) {
+        warning("Upload did not return image path.");
+        return;
+      }
+      update("imageUrl", imageUrl);
+      setImagePreview(getEventImageUrl({ imageUrl }));
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? "Upload failed.";
+      warning(msg);
+      console.error("Image upload error:", err);
     } finally {
       setUploadingImage(false);
     }
@@ -245,11 +236,10 @@ export default function CreateEventPage() {
 
     setLoading(true);
     try {
-      let finalImage = form.imageUrl;
-      if (finalImage && finalImage.length > 1 * 1024 * 1024) {
-        warning("Image is too large. Creating event without image. You can add image later.");
-        finalImage = "";
-      }
+      // imageUrl is either path from upload (/uploads/events/...) or empty
+      const finalImage = form.imageUrl?.trim() && !form.imageUrl.startsWith("data:")
+        ? form.imageUrl
+        : "";
 
       if (!form.eventName.trim()) {
         warning("Event name is required.");
@@ -273,7 +263,7 @@ export default function CreateEventPage() {
         gender: form.genderSelection.toLowerCase(),
         ticketPrice: form.eventType === "paid" ? parseFloat(form.ticketPrice) : 0,
         totalTickets: form.eventType === "paid" ? parseInt(form.totalTickets) : undefined,
-        ...(finalImage && finalImage.trim() ? { image: finalImage } : {}),
+        ...(finalImage ? { image: finalImage, imageUrl: finalImage } : {}),
       };
 
       const response = await eventsAPI.createEvent(eventData);

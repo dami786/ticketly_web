@@ -10,6 +10,7 @@ import { eventsAPI, type Event } from "../lib/api/events";
 import { getEventImageUrl, FALLBACK_IMAGE } from "../lib/utils/images";
 import { useAppStore } from "../store/useAppStore";
 import { authAPI } from "../lib/api/auth";
+import { getCached, setCached, CACHE_KEYS } from "../lib/cache";
 
 type HomeFilter = "explore" | "following" | "today" | "upcoming";
 
@@ -133,43 +134,57 @@ export default function HomePage() {
   }, [user?._id]);
 
   useEffect(() => {
+    const applyEvents = (sorted: Event[]) => {
+      setEvents(sorted);
+      setAllEvents(sorted);
+      setUpcoming(sorted);
+      setFeatured(sorted.slice(0, Math.min(5, sorted.length)));
+    };
+
     const load = async (isBackground = false) => {
-      try {
-        if (!isBackground) {
-          setLoading(true);
+      if (!isBackground) {
+        const cached = getCached<Event[]>(CACHE_KEYS.EVENTS);
+        if (cached && Array.isArray(cached) && cached.length >= 0) {
+          applyEvents(cached);
+          setLoading(false);
+          setError(null);
         } else {
-          setBackgroundFetching(true);
+          setLoading(true);
         }
-        setError(null);
+      } else {
+        setBackgroundFetching(true);
+      }
+      try {
         const response = await eventsAPI.getApprovedEvents();
         if (response.success && response.events) {
-          // Process events and ensure images are properly set (image/imageUrl)
-          const processedEvents = response.events.map((event: any) => ({
-            ...event,
-            image: event.image ?? event.imageUrl ?? null
-          }));
-
+          const processedEvents = response.events.map((event: any) => {
+            const img =
+              event.imageUrl ??
+              event.image ??
+              event.image_url ??
+              event.coverImage ??
+              event.thumbnail ??
+              event.imagePath ??
+              null;
+            return { ...event, image: img ?? undefined, imageUrl: img ?? undefined };
+          });
           const sorted = [...processedEvents].sort(
             (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
           );
-
-          setEvents(sorted);
-          setAllEvents(sorted);
-          setUpcoming(sorted);
-          setFeatured(sorted.slice(0, Math.min(5, sorted.length)));
+          applyEvents(sorted);
+          setCached(CACHE_KEYS.EVENTS, sorted);
         }
       } catch (err: any) {
-        setError(
-          err?.response?.data?.message ??
-            err?.message ??
-            "Failed to load events."
-        );
-      } finally {
-        if (!isBackground) {
-          setLoading(false);
-        } else {
-          setBackgroundFetching(false);
+        if (!getCached<Event[]>(CACHE_KEYS.EVENTS)) {
+          setError(
+            err?.response?.data?.message ??
+              err?.message ??
+              "Failed to load events."
+          );
         }
+      } finally {
+        if (!isBackground) setLoading(false);
+        setBackgroundFetching(false);
       }
     };
     void load();
@@ -240,7 +255,8 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="bg-white">
+      <div className="bg-white min-h-screen">
+        {/* Skeleton: mobile + desktop responsive – same grid (2 cols mobile, 3 cols md+) */}
         <div className="mx-auto max-w-5xl px-4 pb-20 pt-10 sm:px-6">
           <section className="mb-10">
             <div className="mb-4 h-80 w-full animate-pulse rounded-2xl bg-[#1F2937]" />

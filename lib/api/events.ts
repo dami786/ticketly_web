@@ -7,7 +7,9 @@ export interface Event {
   date: string;
   time: string;
   location: string;
+  /** Relative path from API (e.g. /uploads/events/xyz.jpg); full URL built via getEventImageUrl(event) */
   image?: string;
+  imageUrl?: string;
   email: string;
   phone: string;
   ticketPrice: number;
@@ -32,11 +34,18 @@ export interface CreateEventRequest {
   date: string;
   time: string;
   location: string;
+  /** Relative path from upload (e.g. /uploads/events/xyz.jpg) or base64 for legacy */
   image?: string;
+  imageUrl?: string;
   email: string;
   phone: string;
   ticketPrice: number;
   totalTickets: number;
+}
+
+/** Payload for PUT /api/events/:id – partial event + optional ticketTheme */
+export interface UpdateEventPayload extends Partial<CreateEventRequest> {
+  ticketTheme?: unknown;
 }
 
 export interface EventsResponse {
@@ -61,7 +70,30 @@ export interface CreateEventResponse {
   };
 }
 
+export interface UploadImageResponse {
+  success: boolean;
+  imageUrl: string;
+}
+
 export const eventsAPI = {
+  /**
+   * Upload event image. Returns imageUrl (relative path) to use when creating/updating event.
+   * POST /api/events/upload-image
+   */
+  uploadEventImage: async (file: File): Promise<UploadImageResponse> => {
+    const formData = new FormData();
+    formData.append("image", file);
+    const response = await apiClient.post("/events/upload-image", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
+    });
+    const data = response.data as { success?: boolean; imageUrl?: string };
+    return {
+      success: data.success !== false,
+      imageUrl: data.imageUrl ?? (response.data as any).url ?? "",
+    };
+  },
+
   getApprovedEvents: async (): Promise<EventsResponse> => {
     const response = await apiClient.get("/events");
     
@@ -164,7 +196,7 @@ export const eventsAPI = {
     return response.data;
   },
 
-  updateEvent: async (eventId: string, data: Partial<CreateEventRequest>): Promise<{ success: boolean; message: string; event?: Event }> => {
+  updateEvent: async (eventId: string, data: UpdateEventPayload): Promise<{ success: boolean; message: string; event?: Event }> => {
     const response = await apiClient.put(`/events/${eventId}`, data, {
       headers: {
         "Content-Type": "application/json",

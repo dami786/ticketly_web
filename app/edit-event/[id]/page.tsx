@@ -19,6 +19,7 @@ import { eventsAPI, type Event } from "../../../lib/api/events";
 import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
 import { getEventImageUrl, FALLBACK_IMAGE } from "../../../lib/utils/images";
+import { EventDetailsSkeleton } from "../../../components/EventDetailsSkeleton";
 
 interface EventFormData {
   eventName: string;
@@ -123,7 +124,7 @@ export default function EditEventPage() {
           description: e.description || "",
           imageUrl: imageUrl,
           imageUri: imageUrl || null,
-          imagePath: e.image || null,
+          imagePath: e.image ?? e.imageUrl ?? null,
           eventType: isPaid ? "paid" : "free",
           ticketPrice: isPaid ? String(e.ticketPrice || 0) : "",
           currency: "PKR", // Default, can be extended
@@ -202,35 +203,25 @@ export default function EditEventPage() {
 
     setUploadingImage(true);
     try {
-      const compressedImage = await compressImage(file, 1920, 0.75);
-      const base64Size = compressedImage.length;
-      
-      if (base64Size > 1 * 1024 * 1024) {
-        const moreCompressed = await compressImage(file, 1280, 0.6);
-        const moreCompressedSize = moreCompressed.length;
-        
-        if (moreCompressedSize > 1 * 1024 * 1024) {
-          const finalCompressed = await compressImage(file, 1024, 0.5);
-          const finalSize = finalCompressed.length;
-          
-          if (finalSize > 1.2 * 1024 * 1024) {
-            warning("Image is still too large. Please select a smaller image.");
-            setUploadingImage(false);
-            return;
-          }
-          
-          update("imageUrl", finalCompressed);
-          update("imageUri", finalCompressed);
-        } else {
-          update("imageUrl", moreCompressed);
-          update("imageUri", moreCompressed);
-        }
-      } else {
-        update("imageUrl", compressedImage);
-        update("imageUri", compressedImage);
+      let fileToUpload: File = file;
+      const compressedDataUrl = await compressImage(file, 1920, 0.75);
+      if (compressedDataUrl.length < file.size * 1.2) {
+        const res = await fetch(compressedDataUrl);
+        const blob = await res.blob();
+        fileToUpload = new File([blob], file.name, { type: "image/jpeg" });
       }
-    } catch (error) {
-      showError("Failed to process image. Please try again.");
+      const { imageUrl } = await eventsAPI.uploadEventImage(fileToUpload);
+      if (!imageUrl?.trim()) {
+        warning("Upload did not return image path.");
+        return;
+      }
+      const fullUrl = getEventImageUrl({ imageUrl });
+      update("imageUrl", imageUrl);
+      update("imageUri", fullUrl);
+      update("imagePath", imageUrl);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? "Upload failed.";
+      warning(msg);
     } finally {
       setUploadingImage(false);
     }
@@ -337,19 +328,8 @@ export default function EditEventPage() {
     setErrors({});
 
     try {
-      // Handle image
-      let imageToSend: string | undefined = undefined;
-      
-      if (form.imageUri && form.imageUri.startsWith("data:")) {
-        // New local image - use base64
-        imageToSend = form.imageUrl;
-      } else if (!form.imageUri && form.imagePath) {
-        // Image was removed
-        imageToSend = "";
-      } else if (form.imagePath) {
-        // Use existing image path
-        imageToSend = form.imagePath;
-      }
+      // Image: path from upload (imageUrl) or existing (imagePath); empty string if removed
+      const imageToSend = form.imageUrl?.trim() || form.imagePath?.trim() || "";
 
       // Prepare update data
       const updateData: any = {
@@ -363,11 +343,9 @@ export default function EditEventPage() {
         totalTickets: form.eventType === "paid" ? parseInt(form.totalTickets) : undefined,
         email: user?.email || "",
         phone: user?.phone || undefined,
+        image: imageToSend,
+        ...(imageToSend ? { imageUrl: imageToSend } : {}),
       };
-
-      if (imageToSend !== undefined) {
-        updateData.image = imageToSend;
-      }
 
       const response = await eventsAPI.updateEvent(String(eventId), updateData);
 
@@ -411,14 +389,7 @@ export default function EditEventPage() {
   const imagePreview = form.imageUri || form.imageUrl || null;
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
-        <div className="space-y-3 text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
-          <p className="text-sm text-gray-600">Loading event…</p>
-        </div>
-      </div>
-    );
+    return <EventDetailsSkeleton />;
   }
 
   if (errorMessage && !event) {

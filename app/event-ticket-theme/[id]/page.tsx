@@ -2,115 +2,49 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FiArrowLeft, FiCheck, FiDroplet } from "react-icons/fi";
+import { FiArrowLeft, FiChevronRight } from "react-icons/fi";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { useToast } from "../../../lib/hooks/useToast";
+import {
+  DEFAULT_TICKET_THEME,
+  PRESET_THEMES,
+  BACKGROUND_ELEMENTS,
+  PATTERN_WEIGHTS,
+  mergeTicketTheme,
+  type TicketTheme,
+  type BackgroundElement,
+  type PatternWeight,
+} from "../../../lib/ticketTheme";
 import { TicketPreview } from "../../../components/TicketPreview";
-import { ColorPickerModal } from "../../../components/ColorPickerModal";
+import { ThemeColorPickerModal } from "../../../components/ThemeColorPickerModal";
 
-type PatternType =
-  | "none"
-  | "organic"
-  | "fluid"
-  | "grid"
-  | "geometric"
-  | "mesh"
-  | "gradient_mesh"
-  | "vector"
-  | "dynamic";
-
-interface TicketTheme {
-  gradientStart: string;
-  gradientEnd: string;
-  textColor: string;
-  accentColor: string;
-  brandColor: string;
-  backgroundPattern: PatternType;
-  patternWeight: number;
-}
-
-const DEFAULT_THEME: TicketTheme = {
-  gradientStart: "#111827",
-  gradientEnd: "#1F2937",
-  textColor: "#FFFFFF",
-  accentColor: "#F59E0B",
-  brandColor: "#DC2626",
-  backgroundPattern: "none",
-  patternWeight: 3
-};
-
-const THEME_PRESETS: {
-  id: string;
-  name: string;
-  description: string;
-  theme: Partial<TicketTheme>;
-}[] = [
-  {
-    id: "sunset",
-    name: "Sunset",
-    description: "Warm & vibrant",
-    theme: {
-      gradientStart: "#FB923C",
-      gradientEnd: "#DB2777",
-      textColor: "#FFFFFF",
-      accentColor: "#FBBF24",
-      brandColor: "#DC2626"
-    }
-  },
-  {
-    id: "ocean",
-    name: "Ocean",
-    description: "Cool & calm",
-    theme: {
-      gradientStart: "#0EA5E9",
-      gradientEnd: "#1D4ED8",
-      textColor: "#FFFFFF",
-      accentColor: "#A5B4FC",
-      brandColor: "#2563EB"
-    }
-  },
-  {
-    id: "forest",
-    name: "Forest",
-    description: "Fresh & natural",
-    theme: {
-      gradientStart: "#16A34A",
-      gradientEnd: "#166534",
-      textColor: "#ECFDF3",
-      accentColor: "#BBF7D0",
-      brandColor: "#22C55E"
-    }
-  },
-  {
-    id: "royal",
-    name: "Royal",
-    description: "Dark & premium",
-    theme: {
-      gradientStart: "#0F172A",
-      gradientEnd: "#312E81",
-      textColor: "#E5E7EB",
-      accentColor: "#FBBF24",
-      brandColor: "#6366F1"
-    }
-  },
-  {
-    id: "midnight",
-    name: "Midnight",
-    description: "High contrast",
-    theme: {
-      gradientStart: "#020617",
-      gradientEnd: "#111827",
-      textColor: "#F9FAFB",
-      accentColor: "#4B5563",
-      brandColor: "#EF4444"
-    }
-  }
+const COLOR_KEYS: (keyof Pick<
+  TicketTheme,
+  "gradientStart" | "gradientEnd" | "primaryTextColor" | "accentColor" | "brandColor"
+>)[] = [
+  "gradientStart",
+  "gradientEnd",
+  "primaryTextColor",
+  "accentColor",
+  "brandColor",
 ];
 
-type ColorKey = keyof Pick<
-  TicketTheme,
-  "gradientStart" | "gradientEnd" | "textColor" | "accentColor" | "brandColor"
->;
+const COLOR_LABELS: Record<string, string> = {
+  gradientStart: "Gradient start",
+  gradientEnd: "Gradient end",
+  primaryTextColor: "Text color",
+  accentColor: "Accent / divider / background",
+  brandColor: "Brand / logo",
+};
+
+const PATTERN_WEIGHT_IDS: PatternWeight[] = [
+  "sharper",
+  "sharp",
+  "thin",
+  "medium",
+  "thick",
+  "thicker",
+];
 
 export default function EventTicketThemePage() {
   const params = useParams<{ id: string }>();
@@ -122,12 +56,13 @@ export default function EventTicketThemePage() {
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [theme, setTheme] = useState<TicketTheme>(DEFAULT_THEME);
+  const [theme, setTheme] = useState<Partial<TicketTheme>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const [colorPickerOpen, setColorPickerOpen] = useState(false);
-  const [activeColorKey, setActiveColorKey] = useState<ColorKey | null>(null);
-  const [selectedColorForModal, setSelectedColorForModal] = useState("#DC2626");
+  const [editColorKey, setEditColorKey] = useState<keyof TicketTheme | null>(null);
+  const [editHex, setEditHex] = useState("");
+
+  const mergedTheme = mergeTicketTheme(theme);
 
   useEffect(() => {
     const load = async () => {
@@ -141,28 +76,9 @@ export default function EventTicketThemePage() {
         setError(null);
         const response = await eventsAPI.getEventById(String(eventId));
         if (response.success && response.event) {
-          const e: any = response.event;
+          const e = response.event;
           setEvent(e);
-
-          const existingTheme: Partial<TicketTheme> = e.ticketTheme || {};
-
-          // If there was a simple ticket color before, map it into gradient
-          const backgroundColor =
-            e.ticket?.backgroundColor ||
-            (existingTheme as any).backgroundColor ||
-            undefined;
-
-          const initial: TicketTheme = {
-            ...DEFAULT_THEME,
-            ...existingTheme
-          };
-
-          if (backgroundColor && !existingTheme.gradientStart && !existingTheme.gradientEnd) {
-            initial.gradientStart = backgroundColor;
-            initial.gradientEnd = backgroundColor;
-          }
-
-          setTheme(initial);
+          setTheme(e.ticketTheme ?? {});
         } else {
           setError("Event not found.");
         }
@@ -177,47 +93,39 @@ export default function EventTicketThemePage() {
         setLoading(false);
       }
     };
-
     void load();
   }, [eventId]);
 
-  const handleApplyPreset = (presetId: string) => {
-    const preset = THEME_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
+  const handleApplyPreset = (preset: (typeof PRESET_THEMES)[number]) => {
     setTheme((prev) => ({
       ...prev,
-      ...preset.theme,
-      // keep pattern settings as-is
-      backgroundPattern: prev.backgroundPattern,
-      patternWeight: prev.patternWeight
+      gradientStart: preset.gradientStart,
+      gradientEnd: preset.gradientEnd,
+      primaryTextColor: preset.primaryTextColor,
+      accentColor: preset.accentColor,
+      brandColor: preset.brandColor,
+      gradientDirection: "to right bottom",
+      backgroundElement: prev.backgroundElement ?? "none",
+      patternWeight: prev.patternWeight ?? "medium",
     }));
   };
 
-  const openColorPicker = (key: ColorKey) => {
-    setActiveColorKey(key);
-    setSelectedColorForModal(theme[key]);
-    setColorPickerOpen(true);
+  const backgroundElementIndex = BACKGROUND_ELEMENTS.findIndex(
+    (el) => el.id === (mergedTheme.backgroundElement ?? "none")
+  );
+  const patternIndex = PATTERN_WEIGHT_IDS.indexOf(mergedTheme.patternWeight ?? "medium");
+  const currentPatternWeight = PATTERN_WEIGHTS.find((w) => w.id === (mergedTheme.patternWeight ?? "medium"));
+
+  const openColorPicker = (key: keyof TicketTheme) => {
+    setEditColorKey(key);
+    const val = mergedTheme[key];
+    setEditHex(typeof val === "string" ? val : "#FFFFFF");
   };
 
-  const handleColorSelect = (color: string) => {
-    setSelectedColorForModal(color);
-  };
-
-  const handleSaveColor = () => {
-    if (!activeColorKey) {
-      setColorPickerOpen(false);
-      return;
-    }
-    setTheme((prev) => ({
-      ...prev,
-      [activeColorKey]: selectedColorForModal
-    }));
-    setColorPickerOpen(false);
-  };
-
-  const handleCancelColorPicker = () => {
-    setColorPickerOpen(false);
-    setActiveColorKey(null);
+  const handleColorApply = (key: keyof TicketTheme, hex: string) => {
+    setTheme((prev) => ({ ...prev, [key]: hex }));
+    setEditColorKey(null);
+    setEditHex("");
   };
 
   const handleSaveTheme = async () => {
@@ -225,52 +133,66 @@ export default function EventTicketThemePage() {
     try {
       setSaving(true);
       setError(null);
-
-      const payload: any = {
-        ticketTheme: theme
-      };
-
-      const response = await eventsAPI.updateEvent(String(eventId), payload);
+      const themeToSave = mergeTicketTheme(theme);
+      const response = await eventsAPI.updateEvent(String(eventId), {
+        ticketTheme: themeToSave,
+      });
       if (response.success) {
-        success("Ticket theme updated successfully!");
+        success("Ticket theme has been updated.");
         router.back();
       } else {
-        const message = (response as any).message || "Failed to update ticket theme.";
-        showError(message);
-        setError(message);
+        const msg = (response as any).message || "Failed to save theme.";
+        showError(msg);
+        setError(msg);
       }
     } catch (err: any) {
-      const message =
+      const msg =
         err?.response?.data?.message ??
         err?.response?.data?.error ??
         err?.message ??
-        "Failed to update ticket theme.";
-      showError(message);
-      setError(message);
+        "Failed to save theme.";
+      showError(msg);
+      setError(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
+  if (loading || !event) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-white">
-        <div className="space-y-3 text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
-          <p className="text-sm text-gray-600">Loading ticket theme…</p>
+      <div className="bg-white min-h-screen flex-1">
+        {/* Ticket Theme page skeleton – §3: header + preview + presets placeholders */}
+        <header className="border-b border-[#E5E7EB] px-3 pt-6 pb-2" style={{ paddingTop: "calc(0.375rem + 52px)" }}>
+          <div className="flex flex-row items-center justify-between mb-3">
+            <div className="w-8 h-8 rounded-full bg-[#E5E7EB] skeleton-pulse" />
+            <div className="w-32 h-4 rounded-full bg-[#E5E7EB] skeleton-pulse" />
+            <div className="w-8 h-8 rounded-full bg-[#E5E7EB] skeleton-pulse" />
+          </div>
+        </header>
+        <div className="max-w-2xl mx-auto px-4 pt-4">
+          <div className="rounded-xl h-56 mb-4 bg-[#E5E7EB] skeleton-pulse" />
+          <div className="h-3 w-24 rounded-full mb-2 bg-[#E5E7EB] skeleton-pulse" />
+          <div className="flex gap-2 overflow-hidden">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="w-14 flex flex-col items-center flex-shrink-0">
+                <div className="w-9 h-9 rounded-full mb-1 bg-[#E5E7EB] skeleton-pulse" />
+                <div className="h-2 w-10 rounded-full bg-[#E5E7EB] skeleton-pulse" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
-  if (error || !event) {
+  if (error) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-white px-4">
-        <p className="mb-4 text-base font-semibold text-[#EF4444]">{error ?? "Event not found."}</p>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4">
+        <p className="mb-4 text-base font-semibold text-[#EF4444]">{error}</p>
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-[#B91C1C]"
+          className="rounded-xl bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white"
         >
           Go back
         </button>
@@ -278,345 +200,182 @@ export default function EventTicketThemePage() {
     );
   }
 
-  const patternOptions: { value: PatternType; label: string; description: string }[] = [
-    { value: "none", label: "None", description: "Solid background only" },
-    { value: "organic", label: "Organic", description: "Soft curves, music / social" },
-    { value: "fluid", label: "Fluid", description: "Liquid shapes, lifestyle" },
-    { value: "grid", label: "Grid", description: "Tech / structured" },
-    { value: "geometric", label: "Geometric", description: "Bold shapes" },
-    { value: "mesh", label: "Mesh", description: "Gradient mesh" },
-    { value: "gradient_mesh", label: "Gradient Mesh", description: "Layered gradients" },
-    { value: "vector", label: "Vector", description: "Clean vector lines" },
-    { value: "dynamic", label: "Dynamic", description: "Animated / modern feel" }
-  ];
+  const currentBackgroundEl = BACKGROUND_ELEMENTS.find(
+    (el) => el.id === (mergedTheme.backgroundElement ?? "none")
+  );
+  const patternSubtitle = currentBackgroundEl
+    ? currentBackgroundEl.style
+      ? `${currentBackgroundEl.name} (${currentBackgroundEl.style})`
+      : currentBackgroundEl.name
+    : "None";
 
   return (
     <div className="bg-white min-h-screen">
-      {/* Header */}
+      {/* Header: Back | Title | Spacer */}
       <header
-        className="border-b border-gray-200"
-        style={{ paddingTop: "52px" }}
+        className="border-b border-[#E5E7EB] px-3 pt-6 pb-2"
+        style={{ paddingTop: "calc(0.375rem + 52px)", paddingBottom: "8px" }}
       >
-        <div className="mx-auto max-w-5xl px-4 pb-3 sm:px-6">
-          <div className="flex flex-row items-center justify-between mb-3">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="-ml-2 p-2"
-            >
-              <FiArrowLeft size={22} className="text-gray-900" />
-            </button>
-            <span className="text-xs font-medium text-gray-500">Ticket Theme</span>
-            <div className="w-8" />
-          </div>
-          <h1 className="text-lg font-bold text-gray-900">
-            Event Ticket Theme
-          </h1>
-          <p className="mt-0.5 text-xs text-gray-500">
-            Customize how tickets for{" "}
-            <span className="font-semibold text-gray-800">{event.title}</span> look.
-          </p>
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="p-2 -ml-2"
+            aria-label="Back"
+          >
+            <FiArrowLeft size={22} className="text-gray-900" />
+          </button>
+          <h1 className="text-sm font-semibold text-[#111827]">Event Ticket Theme</h1>
+          <div className="w-8" aria-hidden />
         </div>
       </header>
 
-      {/* Content */}
-      <div className="mx-auto max-w-5xl px-4 pb-24 pt-5 sm:px-6 sm:pt-6">
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          {/* Left: Preview + Presets */}
-          <div>
-            {/* Preview */}
-            <section className="mb-4">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-900">Preview</span>
-                <span className="text-[11px] text-gray-500">Live ticket preview</span>
-              </div>
-              <TicketPreview
-                eventName={event.title}
-                gradientStart={theme.gradientStart}
-                gradientEnd={theme.gradientEnd}
-                textColor={theme.textColor}
-              />
-            </section>
+      <div className="max-w-2xl mx-auto px-4 pb-24 pt-4">
+        {/* Preview */}
+        <section className="mb-4">
+          <h2 className="text-xs font-semibold text-[#111827] mb-1">Preview</h2>
+          <TicketPreview
+            theme={mergedTheme}
+            event={event as any}
+            preview={true}
+          />
+        </section>
 
-            {/* Presets */}
-            <section className="mb-5">
-              <h2 className="mb-2 text-xs font-semibold text-gray-900">Presets</h2>
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                {THEME_PRESETS.map((preset) => {
-                  const isActive =
-                    theme.gradientStart === preset.theme.gradientStart &&
-                    theme.gradientEnd === preset.theme.gradientEnd;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => handleApplyPreset(preset.id)}
-                      className={`min-w-[120px] rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
-                        isActive ? "border-primary bg-primary/5" : "border-gray-200 bg-gray-50"
-                      }`}
-                    >
-                      <div
-                        className="mb-2 h-7 w-full rounded-lg border border-white shadow-sm"
-                        style={{
-                          backgroundImage: `linear-gradient(135deg, ${
-                            preset.theme.gradientStart || DEFAULT_THEME.gradientStart
-                          }, ${preset.theme.gradientEnd || DEFAULT_THEME.gradientEnd})`
-                        }}
-                      />
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-semibold text-gray-900">
-                          {preset.name}
-                        </span>
-                        {isActive && (
-                          <FiCheck size={12} className="text-primary" />
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-[10px] text-gray-500">
-                        {preset.description}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* Background pattern */}
-            <section className="mb-5">
-              <h2 className="mb-1 text-xs font-semibold text-gray-900">
-                Background pattern
-              </h2>
-              <p className="mb-2 text-[11px] text-gray-500">
-                Add subtle patterns to match the event style.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {patternOptions.map((opt) => {
-                  const isActive = theme.backgroundPattern === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() =>
-                        setTheme((prev) => ({
-                          ...prev,
-                          backgroundPattern: opt.value
-                        }))
-                      }
-                      className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                        isActive
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {theme.backgroundPattern !== "none" && (
-                <div className="mt-4">
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-900">
-                      Pattern weight
-                    </span>
-                    <span className="text-[11px] text-gray-500">
-                      {theme.patternWeight <= 1
-                        ? "Very subtle"
-                        : theme.patternWeight >= 4
-                        ? "Bold"
-                        : "Balanced"}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={5}
-                    value={theme.patternWeight}
-                    onChange={(e) =>
-                      setTheme((prev) => ({
-                        ...prev,
-                        patternWeight: Number(e.target.value)
-                      }))
-                    }
-                    className="w-full accent-primary"
-                  />
-                  <div className="mt-1 flex justify-between text-[10px] text-gray-400">
-                    <span>Softer</span>
-                    <span>Thicker</span>
-                  </div>
-                </div>
-              )}
-            </section>
-          </div>
-
-          {/* Right: Customize colors */}
-          <div>
-            <section className="mb-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <h2 className="mb-1 text-xs font-semibold text-gray-900 flex items-center gap-1.5">
-                <FiDroplet size={14} className="text-primary" />
-                Customize colors
-              </h2>
-              <p className="mb-3 text-[11px] text-gray-500">
-                Fine-tune gradient, text and accent colors used on the ticket.
-              </p>
-
-              <div className="space-y-2.5">
-                {/* Gradient start */}
-                <button
-                  type="button"
-                  onClick={() => openColorPicker("gradientStart")}
-                  className="flex w-full flex-row items-center justify-between rounded-lg bg-white px-3 py-2 text-left shadow-sm border border-gray-200 hover:border-primary/60 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-6 w-6 rounded-md border border-gray-200"
-                      style={{ backgroundColor: theme.gradientStart }}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-semibold text-gray-900">
-                        Gradient start
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        {theme.gradientStart}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-gray-400">Tap to edit</span>
-                </button>
-
-                {/* Gradient end */}
-                <button
-                  type="button"
-                  onClick={() => openColorPicker("gradientEnd")}
-                  className="flex w-full flex-row items-center justify-between rounded-lg bg-white px-3 py-2 text-left shadow-sm border border-gray-200 hover:border-primary/60 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-6 w-6 rounded-md border border-gray-200"
-                      style={{ backgroundColor: theme.gradientEnd }}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-semibold text-gray-900">
-                        Gradient end
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        {theme.gradientEnd}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-gray-400">Tap to edit</span>
-                </button>
-
-                {/* Text color */}
-                <button
-                  type="button"
-                  onClick={() => openColorPicker("textColor")}
-                  className="flex w-full flex-row items-center justify-between rounded-lg bg-white px-3 py-2 text-left shadow-sm border border-gray-200 hover:border-primary/60 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-6 w-6 rounded-md border border-gray-200"
-                      style={{ backgroundColor: theme.textColor }}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-semibold text-gray-900">
-                        Text color
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        {theme.textColor}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-gray-400">Tap to edit</span>
-                </button>
-
-                {/* Accent color */}
-                <button
-                  type="button"
-                  onClick={() => openColorPicker("accentColor")}
-                  className="flex w-full flex-row items-center justify-between rounded-lg bg-white px-3 py-2 text-left shadow-sm border border-gray-200 hover:border-primary/60 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-6 w-6 rounded-md border border-gray-200"
-                      style={{ backgroundColor: theme.accentColor }}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-semibold text-gray-900">
-                        Accent color
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        {theme.accentColor}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-gray-400">Tap to edit</span>
-                </button>
-
-                {/* Brand color */}
-                <button
-                  type="button"
-                  onClick={() => openColorPicker("brandColor")}
-                  className="flex w-full flex-row items-center justify-between rounded-lg bg-white px-3 py-2 text-left shadow-sm border border-gray-200 hover:border-primary/60 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-6 w-6 rounded-md border border-gray-200"
-                      style={{ backgroundColor: theme.brandColor }}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-semibold text-gray-900">
-                        Brand color
-                      </span>
-                      <span className="text-[10px] text-gray-500">
-                        {theme.brandColor}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-gray-400">Tap to edit</span>
-                </button>
-              </div>
-            </section>
-
-            {/* Save button */}
-            <section>
-              {error && (
-                <p className="mb-2 text-xs text-[#EF4444]">
-                  {error}
-                </p>
-              )}
+        {/* Presets */}
+        <section className="mt-4 mb-1">
+          <h2 className="text-xs font-semibold text-[#111827] mb-1">Presets</h2>
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" style={{ scrollbarWidth: "none" }}>
+            {PRESET_THEMES.map((preset) => (
               <button
+                key={preset.name}
                 type="button"
-                onClick={handleSaveTheme}
-                disabled={saving}
-                className="w-full rounded-md bg-primary py-2.5 text-sm font-semibold text-white shadow-[0_2px_4px_rgba(220,38,38,0.3)] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
+                onClick={() => handleApplyPreset(preset)}
+                className="min-w-[64px] flex-shrink-0 rounded-lg border border-[#E5E7EB] p-2 flex flex-col items-center gap-1"
               >
-                {saving ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    <span>Saving theme…</span>
-                  </>
-                ) : (
-                  <span>Save theme</span>
-                )}
+                <div
+                  className="w-9 h-9 rounded border"
+                  style={{
+                    backgroundColor: preset.gradientStart,
+                    borderColor: preset.gradientEnd,
+                  }}
+                />
+                <span className="text-[10px] font-medium text-[#374151]">{preset.name}</span>
               </button>
-            </section>
+            ))}
           </div>
-        </div>
+        </section>
+
+        {/* Background pattern */}
+        <section className="mt-4 mb-1">
+          <h2 className="text-xs font-semibold text-[#111827] mb-0.5">Background pattern</h2>
+          <p className="text-[10px] text-[#6B7280] mt-0.5">{patternSubtitle}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[10px] text-[#6B7280] w-10">None</span>
+            <input
+              type="range"
+              min={0}
+              max={BACKGROUND_ELEMENTS.length - 1}
+              value={Math.max(0, backgroundElementIndex)}
+              onChange={(e) => {
+                const idx = Number(e.target.value);
+                setTheme((prev) => ({
+                  ...prev,
+                  backgroundElement: BACKGROUND_ELEMENTS[idx]?.id ?? "none",
+                }));
+              }}
+              className="flex-1 h-8 accent-[#DC2626]"
+              style={{
+                // Track and thumb styling via Tailwind accent
+              }}
+            />
+            <span className="text-[10px] text-[#6B7280] w-14 text-right">Dynamic</span>
+          </div>
+        </section>
+
+        {/* Pattern weight – only when pattern !== none */}
+        {(mergedTheme.backgroundElement ?? "none") !== "none" && (
+          <section className="mt-4 mb-1">
+            <h2 className="text-xs font-semibold text-[#111827] mb-0.5">Pattern weight</h2>
+            <p className="text-[10px] text-[#6B7280] mt-0.5">
+              {currentPatternWeight?.description ?? "Balanced"}
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-[10px] text-[#6B7280] w-14">Sharper</span>
+              <input
+                type="range"
+                min={0}
+                max={5}
+                value={patternIndex < 0 ? 3 : patternIndex}
+                onChange={(e) => {
+                  const idx = Number(e.target.value);
+                  setTheme((prev) => ({
+                    ...prev,
+                    patternWeight: PATTERN_WEIGHT_IDS[idx] ?? "medium",
+                  }));
+                }}
+                className="flex-1 h-8 accent-[#DC2626]"
+              />
+              <span className="text-[10px] text-[#6B7280] w-14 text-right">Thicker</span>
+            </div>
+          </section>
+        )}
+
+        {/* Customize colors */}
+        <section className="mt-4 mb-1">
+          <h2 className="text-xs font-semibold text-[#111827] mb-1">Customize colors</h2>
+          <div className="divide-y divide-[#F3F4F6]">
+            {COLOR_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => openColorPicker(key)}
+                className="w-full flex items-center gap-3 py-2 text-left"
+              >
+                <div
+                  className="w-8 h-8 rounded border border-[#E5E7EB] flex-shrink-0"
+                  style={{ backgroundColor: mergedTheme[key] ?? "#ccc" }}
+                />
+                <span className="flex-1 text-xs text-[#1F2937]">{COLOR_LABELS[key]}</span>
+                <span className="text-[10px] font-mono text-[#6B7280]">
+                  {(mergedTheme[key] as string) ?? "#FFFFFF"}
+                </span>
+                <FiChevronRight size={16} className="text-[#9CA3AF] flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Save button */}
+        <section className="mt-4">
+          {error && <p className="mb-2 text-xs text-[#EF4444]">{error}</p>}
+          <button
+            type="button"
+            onClick={handleSaveTheme}
+            disabled={saving}
+            className="w-full py-2.5 px-4 rounded-lg bg-[#DC2626] text-white text-xs font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <>
+                <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                <span>Saving…</span>
+              </>
+            ) : (
+              "Save theme"
+            )}
+          </button>
+        </section>
       </div>
 
-      {/* Color Picker Modal */}
-      <ColorPickerModal
-        isOpen={colorPickerOpen}
-        eventName={event.title}
-        currentColor={selectedColorForModal}
-        onColorSelect={handleColorSelect}
-        onSave={handleSaveColor}
-        onCancel={handleCancelColorPicker}
-        isSaving={false}
+      <ThemeColorPickerModal
+        isOpen={editColorKey !== null}
+        editColorKey={editColorKey}
+        initialHex={editHex}
+        onApply={handleColorApply}
+        onCancel={() => {
+          setEditColorKey(null);
+          setEditHex("");
+        }}
       />
     </div>
   );
 }
-
-

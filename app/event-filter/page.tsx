@@ -7,6 +7,7 @@ import { EventCard } from "../../components/EventCard";
 import { EventCardSkeletonList } from "../../components/EventCardSkeleton";
 import { eventsAPI, type Event } from "../../lib/api/events";
 import { useAppStore } from "../../store/useAppStore";
+import { getCached, setCached, CACHE_KEYS } from "../../lib/cache";
 
 type DateFilter =
   | "today"
@@ -152,30 +153,37 @@ export default function EventFilterPage() {
   }, []);
 
   const loadEvents = async (showRefreshing = false) => {
-    try {
-      if (showRefreshing) {
-        setRefreshing(true);
+    if (!showRefreshing) {
+      const cached = getCached<Event[]>(CACHE_KEYS.EVENTS);
+      if (cached && Array.isArray(cached) && cached.length >= 0) {
+        setEvents(cached);
+        setLocalEvents(cached);
+        setLoading(false);
       } else {
         setLoading(true);
       }
+    } else {
+      setRefreshing(true);
+    }
 
+    try {
       const response = await eventsAPI.getApprovedEvents();
       if (response.success && response.events) {
-        // Process events and ensure images are properly set
         const processedEvents = response.events.map((event: any) => ({
           ...event,
           image: event.image ?? event.imageUrl ?? null,
         }));
-
         const sorted = [...processedEvents].sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
-
         setEvents(sorted);
         setLocalEvents(sorted);
+        setCached(CACHE_KEYS.EVENTS, sorted);
       }
     } catch (err: any) {
-      console.error("Failed to load events:", err);
+      if (!showRefreshing && !getCached<Event[]>(CACHE_KEYS.EVENTS)) {
+        console.error("Failed to load events:", err);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -228,15 +236,16 @@ export default function EventFilterPage() {
             <div className="flex-1 overflow-hidden">
               <div
                 ref={filterScrollRef}
-                className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-2"
+                className="flex gap-1.5 overflow-x-auto scrollbar-hide px-3 pb-2"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
               >
                 {/* Back Button - Inside tabs row, on the left */}
                 <button
                   type="button"
                   onClick={() => router.back()}
-                  className="p-2.5 flex items-center justify-center flex-shrink-0"
-                  style={{ paddingLeft: "10px", paddingRight: "10px" }}
+                  className="p-2.5 flex items-center justify-center flex-shrink-0 -ml-1"
+                  style={{ paddingLeft: "6px", paddingRight: "6px" }}
+                  aria-label="Back"
                 >
                   <span className="text-gray-900 text-xl font-medium">&lt;</span>
                 </button>
@@ -258,13 +267,13 @@ export default function EventFilterPage() {
                           };
                         }
                       }}
-                      className={`py-1.5 px-3 rounded-lg flex flex-row items-center gap-1.5 whitespace-nowrap transition-all ${
+                      className={`whitespace-nowrap rounded-sm px-2.5 py-1 text-sm font-semibold transition-all ${
                         isActive
-                          ? "bg-primary text-white"
-                          : "bg-gray-100 text-gray-600"
+                          ? "text-primary border-b-2 border-primary"
+                          : "text-gray-500"
                       }`}
                     >
-                      <span className="text-[10px] font-semibold">{filter.label}</span>
+                      {filter.label}
                     </button>
                   );
                 })}
@@ -320,11 +329,11 @@ export default function EventFilterPage() {
           {/* Fixed Header */}
           <header className="border-b border-gray-200 bg-white mb-6">
             <div className="flex flex-row items-center">
-              {/* Date Filter Tabs Row */}
+              {/* Date Filter Tabs Row – same design as home page tabs */}
               <div className="flex-1 overflow-hidden">
                 <div
                   ref={filterScrollRef}
-                  className="flex gap-2 overflow-x-auto scrollbar-hide pb-2"
+                  className="flex gap-2 overflow-x-auto scrollbar-hide border-b border-gray-200 pb-2"
                   style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
                 >
                   {/* Back Button - Inside tabs row, on the left */}
@@ -354,13 +363,13 @@ export default function EventFilterPage() {
                             };
                           }
                         }}
-                        className={`py-2 px-4 rounded-lg flex flex-row items-center gap-2 whitespace-nowrap transition-all ${
+                        className={`whitespace-nowrap rounded-sm px-2.5 py-1 text-sm font-semibold transition-all ${
                           isActive
-                            ? "bg-primary text-white border-b-2 border-primary"
-                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            ? "text-primary border-b-2 border-primary"
+                            : "text-gray-500 hover:text-gray-700"
                         }`}
                       >
-                        <span className="text-xs font-semibold">{filter.label}</span>
+                        {filter.label}
                       </button>
                     );
                   })}

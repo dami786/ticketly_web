@@ -10,12 +10,22 @@ import { eventsAPI } from "../../lib/api/events";
 import { getAccessToken } from "../../lib/api/client";
 import { useToast } from "../../lib/hooks/useToast";
 import { useAppStore } from "../../store/useAppStore";
+import { getCached, setCached, CACHE_KEYS } from "../../lib/cache";
 
 type TabKey = "created" | "joined" | "liked";
 
 import { BACKEND_API_URL } from "../../lib/config";
 
 const USER_STORAGE_KEY = "ticketly_user";
+
+interface ProfileCache {
+  user: any;
+  createdEvents: any[];
+  joinedEvents: any[];
+  likedEvents: any[];
+  joinedEventsData: any[];
+  profileImageUrl: string | null;
+}
 
 const resolveProfileImageUrl = (
   rawImage: string | null | undefined
@@ -121,112 +131,121 @@ export default function ProfilePage() {
   const [hydrationTimeout, setHydrationTimeout] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  const applyProfileCache = (c: ProfileCache) => {
+    setUser(c.user);
+    setCreatedEvents(c.createdEvents ?? []);
+    setJoinedEvents(c.joinedEvents ?? []);
+    setLikedEvents(c.likedEvents ?? []);
+    setJoinedEventsData(c.joinedEventsData ?? []);
+    setProfileImageUrl(c.profileImageUrl ?? null);
+    setAuthHydrating(false);
+    setHydrationTimeout(false);
+  };
+
   const loadProfile = async (silent = false) => {
     try {
-      if (!silent) setLoading(true);
+      if (!silent) {
+        const cached = getCached<ProfileCache>(CACHE_KEYS.PROFILE);
+        if (cached && cached.user) {
+          applyProfileCache(cached);
+          setLoading(false);
+        } else {
+          setLoading(true);
+        }
+      }
       const response = await authAPI.getProfile();
       if (response.success && response.user) {
         // Stop hydration immediately when profile loads
         setAuthHydrating(false);
         setHydrationTimeout(false);
-        
+
         // Keep global user in sync with latest profile (including profileImage)
         setUser(response.user);
 
         // Set profile image from API response
-        // Always update profileImageUrl from API response to keep it in sync
         const rawImageUrl = (response.user as any).profileImageUrl || response.user.profileImage;
+        let finalProfileImageUrl: string | null = null;
         if (rawImageUrl) {
           const finalUrl = resolveProfileImageUrl(rawImageUrl);
-          console.log("loadProfile - Raw image URL:", rawImageUrl);
-          console.log("loadProfile - Resolved URL:", finalUrl);
           if (finalUrl) {
-            console.log("loadProfile - Setting profileImageUrl to:", finalUrl);
             setProfileImageUrl(finalUrl);
+            finalProfileImageUrl = finalUrl;
             if (typeof window !== "undefined") {
               window.localStorage.setItem("ticketly_profile_image_url", finalUrl);
             }
           } else {
-            console.warn("loadProfile - Failed to resolve image URL:", rawImageUrl);
+            setProfileImageUrl(null);
           }
         } else {
-          console.log("loadProfile - No image URL in user profile");
-          // If no image in API response, clear state
           setProfileImageUrl(null);
         }
 
+        let created: any[] = [];
         // Normalize created events
         if (
           Array.isArray(response.user.createdEvents) &&
           response.user.createdEvents.length > 0 &&
           typeof response.user.createdEvents[0] === "object"
         ) {
-          // Process events to ensure images are properly set
-          const processedEvents = response.user.createdEvents.map((event: any) => {
-            // Check multiple possible field names for image
-            const image = event.image || 
-                         event.imageUrl || 
-                         event.image_url ||
-                         null;
-            return {
-              ...event,
-              image: image // Set to image field for consistency
-            };
+          created = response.user.createdEvents.map((event: any) => {
+            const image = event.image || event.imageUrl || event.image_url || null;
+            return { ...event, image };
           });
-          setCreatedEvents(processedEvents);
+          setCreatedEvents(created);
         } else {
-          // fallback to API
           const myEvents = await eventsAPI.getMyEvents();
           if (myEvents.success && myEvents.events) {
-            // Process events to ensure images are properly set
-            const processedEvents = myEvents.events.map((event: any) => {
-              // Check multiple possible field names for image
-              const image = event.image || 
-                           event.imageUrl || 
-                           event.image_url ||
-                           null;
-              return {
-                ...event,
-                image: image // Set to image field for consistency
-              };
+            created = myEvents.events.map((event: any) => {
+              const image = event.image || event.imageUrl || event.image_url || null;
+              return { ...event, image };
             });
-            setCreatedEvents(processedEvents);
+            setCreatedEvents(created);
           }
         }
 
-        // Normalize joined events
+        let joined: any[] = [];
+        let joinedData: any[] = [];
         if (
           Array.isArray(response.user.joinedEvents) &&
           response.user.joinedEvents.length > 0 &&
           typeof response.user.joinedEvents[0] === "object" &&
           (response.user.joinedEvents[0] as any).event
         ) {
-          const joinedFull = response.user.joinedEvents as any[];
-          setJoinedEventsData(joinedFull);
-          setJoinedEvents(
-            joinedFull
-              .map((item) => item.event)
-              .filter((e) => Boolean(e))
-          );
+          joinedData = response.user.joinedEvents as any[];
+          joined = joinedData.map((item) => item.event).filter((e) => Boolean(e));
+          setJoinedEventsData(joinedData);
+          setJoinedEvents(joined);
         } else {
           setJoinedEventsData([]);
           setJoinedEvents([]);
         }
 
-        // Normalize liked events
+        let liked: any[] = [];
         if (
           Array.isArray(response.user.likedEvents) &&
           response.user.likedEvents.length > 0 &&
           typeof response.user.likedEvents[0] === "object"
         ) {
-          setLikedEvents(response.user.likedEvents as any[]);
+          liked = response.user.likedEvents as any[];
+          setLikedEvents(liked);
         } else {
           setLikedEvents([]);
         }
+
+        setCached(CACHE_KEYS.PROFILE, {
+          user: response.user,
+          createdEvents: created,
+          joinedEvents: joined,
+          likedEvents: liked,
+          joinedEventsData: joinedData,
+          profileImageUrl: finalProfileImageUrl,
+        });
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to load profile", error);
+      if (!getCached<ProfileCache>(CACHE_KEYS.PROFILE)) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load profile", error);
+      }
     } finally {
       setLoading(false);
     }
@@ -810,7 +829,7 @@ export default function ProfilePage() {
         <section className="mb-8 min-h-[120px]">
           {loading ? (
             <div className="grid grid-cols-2 gap-4 md:flex md:flex-wrap md:justify-between md:gap-y-4">
-              <EventCardSkeletonList count={4} />
+              <EventCardSkeletonList count={6} />
             </div>
           ) : eventsToRender.length === 0 ? (
             <div className="py-10 text-center text-sm text-gray-600">

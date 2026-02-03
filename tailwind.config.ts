@@ -7,6 +7,15 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      keyframes: {
+        "skeleton-pulse": {
+          "0%, 100%": { opacity: "0.35" },
+          "50%": { opacity: "0.65" },
+        },
+      },
+      animation: {
+        "skeleton-pulse": "skeleton-pulse 1.6s ease-in-out infinite",
+      },
       colors: {
         // Primary Colors (from DESIGN.md)
         primary: "#DC2626", // Primary Red

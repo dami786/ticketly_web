@@ -23,7 +23,9 @@ import { ticketsAPI } from "../../../lib/api/tickets";
 import { getEventImageUrl, FALLBACK_IMAGE } from "../../../lib/utils/images";
 import { useToast } from "../../../lib/hooks/useToast";
 import { useAppStore } from "../../../store/useAppStore";
+import { getCached, setCached, getEventDetailCacheKey } from "../../../lib/cache";
 import { Modal } from "../../../components/Modal";
+import { EventDetailsSkeleton } from "../../../components/EventDetailsSkeleton";
 
 const getStatusInfo = (status: string) => {
   switch (status) {
@@ -170,31 +172,44 @@ export default function EventDetailsPage() {
       setLoading(false);
       return;
     }
-    try {
-      if (!silent) {
-        setLoading(true);
+    const cacheKey = getEventDetailCacheKey(eventId);
+    if (!silent) {
+      const cached = getCached<Event>(cacheKey);
+      if (cached && (cached as any)._id) {
+        setEvent(cached);
+        setLikeCount((cached as any).likeCount ?? 0);
+        setLoading(false);
+        setError(null);
       } else {
-        setBackgroundFetching(true);
+        setLoading(true);
       }
+    } else {
+      setBackgroundFetching(true);
+    }
+    try {
       setError(null);
       const response = await eventsAPI.getEventById(String(eventId));
       if (response.success && response.event) {
         const e: any = response.event;
         const transformed: Event = {
           ...e,
-          _id: e.id || e._id
+          _id: e.id || e._id,
+          likeCount: e.likeCount,
         };
         setEvent(transformed);
         setLikeCount(e.likeCount || 0);
+        setCached(cacheKey, transformed);
       } else {
-        setError("Event not found.");
+        if (!getCached<Event>(cacheKey)) setError("Event not found.");
       }
     } catch (err: any) {
-      setError(
-        err?.response?.data?.message ??
-          err?.message ??
-          "Failed to load event."
-      );
+      if (!getCached<Event>(cacheKey)) {
+        setError(
+          err?.response?.data?.message ??
+            err?.message ??
+            "Failed to load event."
+        );
+      }
     } finally {
       setLoading(false);
       setBackgroundFetching(false);
@@ -461,14 +476,7 @@ export default function EventDetailsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-white">
-        <div className="space-y-3 text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
-          <p className="text-sm text-gray-600">Loading event…</p>
-        </div>
-      </div>
-    );
+    return <EventDetailsSkeleton />;
   }
 
   if (error || !event) {
