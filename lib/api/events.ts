@@ -13,6 +13,8 @@ export interface Event {
   ticketPrice: number;
   totalTickets: number;
   status?: "pending" | "approved";
+  // Optional ticket theme configuration for advanced ticket styling
+  ticketTheme?: any;
   createdBy?: {
     _id: string;
     fullName: string;
@@ -71,6 +73,9 @@ export const eventsAPI = {
         console.log(`Event ${index + 1}: ${event.title}`, {
           hasImage: !!event.image,
           hasImageUrl: !!event.imageUrl,
+          imageUrlValue: event.imageUrl ? (typeof event.imageUrl === "string" ? `${event.imageUrl.substring(0, 100)}...` : event.imageUrl) : "null",
+          imageUrlType: typeof event.imageUrl,
+          imageUrlLength: event.imageUrl ? (typeof event.imageUrl === "string" ? event.imageUrl.length : 0) : 0,
           imageType: event.image ? typeof event.image : "none",
           imageLength: event.image ? event.image.length : 0,
           imagePreview: event.image ? `${event.image.substring(0, 50)}...` : "no image",
@@ -149,6 +154,23 @@ export const eventsAPI = {
 
   unlikeEvent: async (eventId: string): Promise<{ success: boolean; message: string }> => {
     const response = await apiClient.post(`/events/${eventId}/unlike`);
+    return response.data;
+  },
+
+  updateTicketColor: async (eventId: string, backgroundColor: string): Promise<{ success: boolean; message: string; ticket?: any }> => {
+    const response = await apiClient.put(`/events/${eventId}/ticket/color`, {
+      backgroundColor
+    });
+    return response.data;
+  },
+
+  updateEvent: async (eventId: string, data: Partial<CreateEventRequest>): Promise<{ success: boolean; message: string; event?: Event }> => {
+    const response = await apiClient.put(`/events/${eventId}`, data, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      timeout: 60000,
+    });
     return response.data;
   }
 };

@@ -17,6 +17,7 @@ export default function TicketPage() {
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
   const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
@@ -65,6 +66,11 @@ export default function TicketPage() {
     return null;
   };
 
+  const getQrCodeUrl = (): string | null => {
+    if (!ticket) return null;
+    return getQrCodeSrc(ticket);
+  };
+
   const getPaymentScreenshotUrl = (): string | null => {
     if (paymentScreenshotPreview) return paymentScreenshotPreview;
     
@@ -99,15 +105,13 @@ export default function TicketPage() {
     return `${origin}${screenshotUrl}`;
   };
 
-  useEffect(() => {
-    const load = async () => {
+  const loadTicket = async () => {
       if (!ticketId) {
         setError("Ticket ID is required.");
         setLoading(false);
         return;
       }
       try {
-        setLoading(true);
         setError(null);
         const response = await ticketsAPI.getTicketById(String(ticketId));
         if (response.success && response.ticket) {
@@ -123,10 +127,19 @@ export default function TicketPage() {
         );
       } finally {
         setLoading(false);
+      setRefreshing(false);
       }
     };
-    void load();
+
+  useEffect(() => {
+    setLoading(true);
+    void loadTicket();
   }, [ticketId]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadTicket();
+  };
 
   const handleScreenshotChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -353,21 +366,36 @@ export default function TicketPage() {
     <div className="bg-white min-h-screen">
       {/* Mobile Layout */}
       <div className="sm:hidden">
-        {/* Header */}
-        <div className="flex flex-row items-center justify-between pt-[60px] px-3 pb-5 bg-white" style={{ paddingTop: 'calc(60px + env(safe-area-inset-top))' }}>
-          <button
-            type="button"
-            onClick={() => router.back()}
+        {/* Fixed Header */}
+        <div className="fixed top-0 left-0 right-0 z-10 flex flex-row items-center justify-between px-3 py-4 bg-white border-b border-gray-200" style={{ paddingTop: 'calc(8px + env(safe-area-inset-top))' }}>
+        <button
+          type="button"
+          onClick={() => router.back()}
             className="p-2"
-          >
+        >
             <FiArrowLeft size={24} className="text-gray-900" />
-          </button>
+        </button>
           <h1 className="text-gray-900 text-xl font-bold">Your Ticket</h1>
-          <div className="w-[30px]" />
+          <div className="w-[40px]" />
         </div>
 
-        {/* Ticket Card */}
-        <div className="mx-[30px] mb-6">
+        {/* ScrollView Content */}
+        <div 
+          className="overflow-y-auto"
+          style={{ 
+            paddingTop: 'calc(60px + env(safe-area-inset-top))',
+            paddingBottom: 'calc(40px + env(safe-area-inset-bottom))'
+          }}
+          onScroll={(e) => {
+            const target = e.currentTarget;
+            if (target.scrollTop === 0 && !refreshing && !loading) {
+              // Could trigger refresh here if needed
+            }
+          }}
+        >
+
+          {/* Ticket Card */}
+          <div className="mx-[20px] mb-3">
           <div className="bg-white rounded-xl relative border border-gray-200 shadow-lg">
             {/* Perforated Left Edge */}
             <div className="absolute left-0 top-0 bottom-0 w-3 bg-white" style={{
@@ -403,7 +431,7 @@ export default function TicketPage() {
                     LOCATION: {event.location}
                   </p>
                 )}
-              </div>
+            </div>
 
               {/* Status, Date/Time/Price, QR Code Row */}
               <div className="flex flex-row justify-between items-start mt-2 h-[90px]">
@@ -424,7 +452,7 @@ export default function TicketPage() {
                       • Price: {ticketPrice.toLocaleString()} PKR
                     </p>
                   )}
-                </div>
+          </div>
 
                 {/* Center: Status Stamp */}
                 <div className="flex-1 relative">
@@ -435,22 +463,22 @@ export default function TicketPage() {
                       backgroundColor: getStatusBgColor(ticket.status)
                     }}
                   >
-                    <span
+            <span
                       className="text-xs font-bold tracking-wide whitespace-nowrap w-full max-h-[18px] block"
-                      style={{ color: getStatusColor(ticket.status) }}
-                    >
-                      {getStatusText(ticket.status)}
-                    </span>
+              style={{ color: getStatusColor(ticket.status) }}
+            >
+              {getStatusText(ticket.status)}
+            </span>
                   </div>
-                </div>
+          </div>
 
                 {/* Right: QR Code */}
                 {ticket.status === "confirmed" && ticket.accessKey ? (
                   <div className="ml-4">
                     <div className="bg-white p-2 rounded-lg border border-primary">
                       {getQrCodeSrc(ticket) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
                           src={getQrCodeSrc(ticket) as string}
                           alt="QR Code"
                           className="w-[70px] h-[70px]"
@@ -469,9 +497,9 @@ export default function TicketPage() {
                     <span className="text-[10px] text-gray-500 text-center max-w-[70px]">
                       QR code is given after payment confirmed
                     </span>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
 
               {/* Dashed Divider */}
               <div className="h-px border-t-2 border-primary border-dashed my-3.5 w-full" />
@@ -491,32 +519,50 @@ export default function TicketPage() {
                   Access key is given after payment confirmed
                 </p>
               )}
-            </div>
-          </div>
+                </div>
+                </div>
         </div>
 
-        {/* Payment Section */}
-        {showPaymentSection && (
-          <div className="mx-3 mt-4 mb-6 bg-white rounded-2xl p-5 border border-gray-200">
-            {ticket.status === "payment_in_review" && (
-              <div>
-                {/* Status Message */}
-                <div className="flex flex-col items-center mb-4">
-                  <h3 className="text-gray-900 text-base font-semibold mb-2">In Review</h3>
-                  <p className="text-gray-900 text-sm text-start mb-1">
-                    Your payment screenshot has been submitted successfully.
-                  </p>
-                  <p className="text-gray-900 text-sm text-start mb-1">
-                    Our team will verify your payment within 24-48 hours.
-                  </p>
-                  <p className="text-gray-900 text-sm text-start mb-1">
-                    You can update the screenshot until verification is complete.
-                  </p>
-                </div>
+          {/* Download Ticket Button */}
+          {ticket.status === "confirmed" && getQrCodeUrl() && (
+            <div className="mx-[20px] mb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  const qrUrl = getQrCodeUrl();
+                  if (qrUrl) {
+                    window.open(qrUrl, '_blank');
+                  }
+                }}
+                className="w-full py-2.5 rounded-lg bg-primary flex items-center justify-center"
+              >
+                <span className="text-white text-xs font-semibold">Download Ticket</span>
+              </button>
+              </div>
+            )}
 
-                {/* Payment Method Selection */}
-                <div className="mb-4">
-                  <label className="text-gray-900 text-xs mb-2 block">Payment Method</label>
+            {/* Payment Section */}
+          {showPaymentSection && (
+            <div className="mx-3 mt-4 mb-6 bg-white rounded-2xl p-5 border border-gray-200">
+              {ticket.status === "payment_in_review" && (
+              <div>
+                  {/* Status Message */}
+                  <div className="flex flex-col items-center mb-4">
+                    <h3 className="text-gray-900 text-base font-semibold mb-2 text-center">In Review</h3>
+                    <p className="text-gray-900 text-sm text-start mb-1">
+                      Your payment screenshot has been submitted successfully.
+                    </p>
+                    <p className="text-gray-900 text-sm text-start mb-1">
+                      Our team will verify your payment within 24-48 hours.
+                    </p>
+                    <p className="text-gray-900 text-sm text-start mb-1">
+                      You can update the screenshot until verification is complete.
+                    </p>
+                  </div>
+
+                  {/* Payment Method Selection */}
+                  <div className="mb-4">
+                    <label className="text-gray-900 text-xs mb-2 block">Payment Method</label>
                   <div className="flex flex-row gap-2">
                     {[
                       { key: "bank_transfer", label: "Bank" },
@@ -546,18 +592,18 @@ export default function TicketPage() {
                   </div>
                 </div>
 
-                {/* Phone Number */}
-                {phoneNumber && (
-                  <div className="mt-3">
-                    <p className="text-gray-900 text-xs mb-1">
-                      Send payment to: {phoneNumber}
-                    </p>
-                  </div>
-                )}
+                  {/* Phone Number */}
+                  {phoneNumber && (
+                    <div className="mt-3 mb-1">
+                      <p className="text-gray-900 text-xs">
+                        Send payment to: {phoneNumber}
+                      </p>
+              </div>
+            )}
 
-                {/* Screenshot Display/Update */}
-                <div className="mb-4">
-                  <label className="text-gray-900 text-xs mb-2 block">Payment Screenshot</label>
+                  {/* Screenshot Display/Update */}
+                  <div className="mb-4">
+                    <label className="text-gray-900 text-xs mb-2 block">Payment Screenshot</label>
                   {screenshotUrl ? (
                     <div className="relative">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -627,7 +673,7 @@ export default function TicketPage() {
                     <div className="flex flex-row items-center">
                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                       <span className="text-white text-base font-semibold ml-2">Updating...</span>
-                    </div>
+                </div>
                   ) : (
                     <span className="text-white text-base font-semibold">Update Screenshot</span>
                   )}
@@ -636,7 +682,7 @@ export default function TicketPage() {
             )}
 
             {ticket.status === "pending_payment" && (
-              <div>
+            <div>
                 {/* Status Message */}
                 <h3 className="text-[#F59E0B] text-base font-semibold mb-2 text-center">
                   Payment Pending
@@ -674,25 +720,25 @@ export default function TicketPage() {
                         </span>
                       </button>
                     ))}
-                  </div>
-                </div>
+            </div>
+          </div>
 
-                {/* Phone Number */}
-                {phoneNumber && (
-                  <div className="mt-3">
-                    <p className="text-[#9CA3AF] text-xs mb-1">
-                      Send payment to: {phoneNumber}
-                    </p>
-                  </div>
-                )}
+                  {/* Phone Number */}
+                  {phoneNumber && (
+                    <div className="mt-3 mb-1">
+                      <p className="text-gray-900 text-xs">
+                        Send payment to: {phoneNumber}
+                      </p>
+              </div>
+                  )}
 
-                {/* Screenshot Selection */}
-                <div className="mb-4">
-                  <label className="text-[#9CA3AF] text-xs mb-2 block">Payment Screenshot</label>
+                  {/* Screenshot Selection */}
+                  <div className="mb-4">
+                    <label className="text-gray-900 text-xs mb-2 block">Payment Screenshot</label>
                   {paymentScreenshotPreview ? (
                     <div className="relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                         src={paymentScreenshotPreview}
                         alt="Payment screenshot preview"
                         className="w-full h-[200px] rounded-xl object-cover"
@@ -761,35 +807,36 @@ export default function TicketPage() {
           </div>
         )}
 
-        {/* Ticket Footer */}
-        <div className="mx-3 mb-6 p-5 rounded-2xl bg-gray-100 border border-gray-200">
-          <p className="text-gray-700 text-xs text-center mb-1">
-            This ticket is valid for one person only
-          </p>
-          <p className="text-gray-700 text-xs text-center mb-1">
-            For support, contact: support@ticketly.com
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        {ticket.status === "confirmed" && (
-          <div className="flex flex-row gap-3 px-3" style={{ paddingBottom: 'calc(40px + env(safe-area-inset-bottom))' }}>
-            <button
-              type="button"
-              onClick={() => info("Ticket download feature coming soon!")}
-              className="flex-1 bg-primary py-4 rounded-xl flex items-center justify-center"
-            >
-              <span className="text-white text-base font-semibold">Download Ticket</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => info("Ticket sharing feature coming soon!")}
-              className="flex-1 bg-gray-100 border border-gray-200 py-4 rounded-xl flex items-center justify-center"
-            >
-              <span className="text-gray-900 text-base font-semibold">Share</span>
-            </button>
+          {/* Ticket Footer */}
+          <div className="mx-3 mb-6 p-5 rounded-2xl bg-gray-100 border border-gray-200">
+            <p className="text-gray-700 text-xs text-center mb-1">
+              This ticket is valid for one person only
+            </p>
+            <p className="text-gray-700 text-xs text-center mb-1">
+              For support, contact: support@ticketly.com
+            </p>
           </div>
-        )}
+
+          {/* Action Buttons */}
+          {ticket.status === "confirmed" && (
+            <div className="flex flex-row gap-3 px-3 mb-6">
+              <button
+                type="button"
+                onClick={() => info("Ticket download feature coming soon!")}
+                className="flex-1 bg-primary py-4 rounded-xl flex items-center justify-center"
+              >
+                <span className="text-white text-base font-semibold">Download Ticket</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => info("Ticket sharing feature coming soon!")}
+                className="flex-1 bg-gray-100 border border-gray-200 py-4 rounded-xl flex items-center justify-center"
+              >
+                <span className="text-gray-900 text-base font-semibold">Share</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Desktop Layout */}
@@ -805,7 +852,7 @@ export default function TicketPage() {
               <FiArrowLeft size={24} className="text-gray-900" />
             </button>
             <h1 className="text-gray-900 text-xl font-bold">Your Ticket</h1>
-            <div className="w-[30px]" />
+            <div className="w-[40px]" />
           </div>
 
           {/* Ticket Card */}
@@ -913,7 +960,7 @@ export default function TicketPage() {
                       </span>
                     </div>
                   )}
-                </div>
+                    </div>
 
                 {/* Dashed Divider */}
                 <div className="h-px border-t-2 border-primary border-dashed my-3.5 w-full" />
@@ -933,18 +980,35 @@ export default function TicketPage() {
                     Access key is given after payment confirmed
                   </p>
                 )}
-              </div>
+                    </div>
+                  </div>
+                </div>
+
+          {/* Download Ticket Button */}
+          {ticket.status === "confirmed" && getQrCodeUrl() && (
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  const qrUrl = getQrCodeUrl();
+                  if (qrUrl) {
+                    window.open(qrUrl, '_blank');
+                  }
+                }}
+                className="w-full py-2.5 rounded-lg bg-primary flex items-center justify-center"
+              >
+                <span className="text-white text-xs font-semibold">Download Ticket</span>
+              </button>
             </div>
-          </div>
+          )}
 
           {/* Payment Section */}
           {showPaymentSection && (
             <div className="mb-6 bg-white rounded-2xl p-5 border border-gray-200">
-              {/* Same payment section content as mobile */}
               {ticket.status === "payment_in_review" && (
                 <div>
                   <div className="flex flex-col items-center mb-4">
-                    <h3 className="text-gray-900 text-base font-semibold mb-2">In Review</h3>
+                    <h3 className="text-gray-900 text-base font-semibold mb-2 text-center">In Review</h3>
                     <p className="text-gray-900 text-sm text-start mb-1">
                       Your payment screenshot has been submitted successfully.
                     </p>
@@ -988,12 +1052,12 @@ export default function TicketPage() {
                   </div>
 
                   {phoneNumber && (
-                    <div className="mt-3">
-                      <p className="text-gray-900 text-xs mb-1">
+                    <div className="mt-3 mb-1">
+                      <p className="text-gray-900 text-xs">
                         Send payment to: {phoneNumber}
-                      </p>
-                    </div>
-                  )}
+              </p>
+            </div>
+          )}
 
                   <div className="mb-4">
                     <label className="text-gray-900 text-xs mb-2 block">Payment Screenshot</label>
@@ -1026,7 +1090,7 @@ export default function TicketPage() {
                           <FiEdit size={16} className="text-white mr-1" />
                           <span className="text-white text-xs font-semibold">Update</span>
                         </button>
-                      </div>
+                </div>
                     ) : (
                       <button
                         type="button"
@@ -1049,7 +1113,7 @@ export default function TicketPage() {
                       className="hidden"
                       onChange={handleScreenshotChange}
                     />
-                  </div>
+              </div>
 
                   <button
                     type="button"
@@ -1078,22 +1142,22 @@ export default function TicketPage() {
                   <h3 className="text-[#F59E0B] text-base font-semibold mb-2 text-center">
                     Payment Pending
                   </h3>
-                  <p className="text-[#9CA3AF] text-sm text-center mb-4">
+                  <p className="text-gray-900 text-sm text-center mb-4">
                     Please upload a screenshot of your payment to confirm your ticket.
                   </p>
 
                   <div className="mb-4">
-                    <label className="text-[#9CA3AF] text-xs mb-2 block">Payment Method</label>
+                    <label className="text-gray-900 text-xs mb-2 block">Payment Method</label>
                     <div className="flex flex-row gap-2">
                       {[
                         { key: "bank_transfer", label: "Bank" },
-                        { key: "easypaisa", label: "EasyPaisa" },
-                        { key: "jazzcash", label: "JazzCash" },
-                        { key: "other", label: "Other" }
+                      { key: "easypaisa", label: "EasyPaisa" },
+                      { key: "jazzcash", label: "JazzCash" },
+                      { key: "other", label: "Other" }
                       ].map((method) => (
-                        <button
+                      <button
                           key={method.key}
-                          type="button"
+                        type="button"
                           onClick={() => setPaymentMethod(method.key as PaymentMethod)}
                           className={`px-3 py-2 rounded-lg border ${
                             paymentMethod === method.key
@@ -1108,21 +1172,21 @@ export default function TicketPage() {
                           >
                             {method.label}
                           </span>
-                        </button>
-                      ))}
-                    </div>
+                      </button>
+                    ))}
+                  </div>
                   </div>
 
                   {phoneNumber && (
-                    <div className="mt-3">
-                      <p className="text-[#9CA3AF] text-xs mb-1">
+                    <div className="mt-3 mb-1">
+                      <p className="text-gray-900 text-xs">
                         Send payment to: {phoneNumber}
-                      </p>
-                    </div>
+                  </p>
+                </div>
                   )}
 
                   <div className="mb-4">
-                    <label className="text-[#9CA3AF] text-xs mb-2 block">Payment Screenshot</label>
+                    <label className="text-gray-900 text-xs mb-2 block">Payment Screenshot</label>
                     {paymentScreenshotPreview ? (
                       <div className="relative">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1144,7 +1208,7 @@ export default function TicketPage() {
                         >
                           <FiX size={20} className="text-white" />
                         </button>
-                      </div>
+                  </div>
                     ) : (
                       <button
                         type="button"
@@ -1153,12 +1217,12 @@ export default function TicketPage() {
                       >
                         <FiImage size={48} className="text-gray-200 mb-2" />
                         <span className="text-gray-200 text-sm mt-2 text-center">
-                          Tap to select payment screenshot
+                      Tap to select payment screenshot
                         </span>
                         <div className="mt-2 w-full items-start px-4">
                           <p className="text-gray-300 text-xs">• JPEG, PNG, GIF, or WebP</p>
                           <p className="text-gray-300 text-xs">• Max 5MB</p>
-                        </div>
+                    </div>
                       </button>
                     )}
                     <input
@@ -1168,10 +1232,10 @@ export default function TicketPage() {
                       className="hidden"
                       onChange={handleScreenshotChange}
                     />
-                  </div>
+                </div>
 
-                  <button
-                    type="button"
+                <button
+                  type="button"
                     onClick={handleSubmitPayment}
                     disabled={isSubmittingProof || !paymentScreenshot}
                     className={`py-4 rounded-xl flex items-center justify-center w-full ${
@@ -1188,8 +1252,8 @@ export default function TicketPage() {
                     ) : (
                       <span className="text-white text-base font-semibold">Submit Payment</span>
                     )}
-                  </button>
-                </div>
+                </button>
+              </div>
               )}
             </div>
           )}
@@ -1202,27 +1266,27 @@ export default function TicketPage() {
             <p className="text-gray-700 text-xs text-center mb-1">
               For support, contact: support@ticketly.com
             </p>
-          </div>
+        </div>
 
           {/* Action Buttons */}
-          {ticket.status === "confirmed" && (
+        {ticket.status === "confirmed" && (
             <div className="flex flex-row gap-3">
-              <button
-                type="button"
+            <button
+              type="button"
                 onClick={() => info("Ticket download feature coming soon!")}
                 className="flex-1 bg-primary py-4 rounded-xl flex items-center justify-center"
               >
                 <span className="text-white text-base font-semibold">Download Ticket</span>
-              </button>
-              <button
-                type="button"
+            </button>
+            <button
+              type="button"
                 onClick={() => info("Ticket sharing feature coming soon!")}
                 className="flex-1 bg-gray-100 border border-gray-200 py-4 rounded-xl flex items-center justify-center"
               >
                 <span className="text-gray-900 text-base font-semibold">Share</span>
-              </button>
-            </div>
-          )}
+            </button>
+          </div>
+        )}
         </div>
       </div>
     </div>

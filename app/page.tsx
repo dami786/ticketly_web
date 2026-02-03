@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FiMapPin } from "react-icons/fi";
 import { EventCard } from "../components/EventCard";
 import { EventCardSkeletonList } from "../components/EventCardSkeleton";
 import { eventsAPI, type Event } from "../lib/api/events";
 import { getEventImageUrl, FALLBACK_IMAGE } from "../lib/utils/images";
 import { useAppStore } from "../store/useAppStore";
+import { authAPI } from "../lib/api/auth";
 
-type HomeFilter = "all" | "myevents" | "today" | "tomorrow" | "thisweek" | "thisweekend" | "nextweek" | "nextweekend" | "thismonth";
+type HomeFilter = "explore" | "following" | "today" | "upcoming";
 
 const isSameDay = (date1: Date, date2: Date): boolean => {
   return (
@@ -58,54 +60,52 @@ const getWeekendDates = (weekStart: Date): { saturday: Date; sunday: Date } => {
   return { saturday, sunday };
 };
 
+const getJoinedEventIds = (user: any): string[] => {
+  if (!user?.joinedEvents || !Array.isArray(user.joinedEvents)) return [];
+  return user.joinedEvents
+    .map((j: any) => (typeof j === 'string' ? j : j?.event?._id || j?.event?.id))
+    .filter(Boolean);
+};
+
 function eventMatchesFilter(
   event: Event,
   filter: HomeFilter,
-  userId?: string
+  userId?: string,
+  joinedEventIds?: string[]
 ): boolean {
-  const parts = event.date.split("-").map(Number);
-  const eventDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
-  eventDate.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  if (filter === "all") return true;
-  if (filter === "myevents") {
-    if (!userId) return false;
-    return event.createdBy?._id === userId;
+  // Explore: show all events
+  if (filter === "explore") return true;
+  
+  // Following: only joined events
+  if (filter === "following") {
+    if (!joinedEventIds?.length) return false;
+    const eventId = event._id || (event as any).id;
+    return joinedEventIds.includes(eventId);
   }
-  if (filter === "today") return isSameDay(eventDate, today);
-  if (filter === "tomorrow") {
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return isSameDay(eventDate, tomorrow);
+  
+  // Today: same day as today
+  if (filter === "today") {
+    const parts = event.date.split("-").map(Number);
+    const eventDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+    eventDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return isSameDay(eventDate, today);
   }
-  if (filter === "thisweek") return isSameWeek(eventDate, today);
-  if (filter === "thisweekend") {
-    const thisWeekStart = getWeekStart(today);
-    const { saturday, sunday } = getWeekendDates(thisWeekStart);
-    return (eventDate.getTime() === saturday.getTime() || eventDate.getTime() === sunday.getTime());
-  }
-  if (filter === "nextweek") {
-    const nextWeekStart = new Date(today);
-    nextWeekStart.setDate(today.getDate() + (7 - today.getDay())); // Next Monday
-    nextWeekStart.setHours(0, 0, 0, 0);
-    const nextWeekEnd = new Date(nextWeekStart);
-    nextWeekEnd.setDate(nextWeekStart.getDate() + 6); // Next Sunday
-    return eventDate >= nextWeekStart && eventDate <= nextWeekEnd;
-  }
-  if (filter === "nextweekend") {
-    const nextWeekStart = new Date(today);
-    nextWeekStart.setDate(today.getDate() + (7 - today.getDay())); // Next Monday
-    nextWeekStart.setHours(0, 0, 0, 0);
-    const { saturday, sunday } = getWeekendDates(nextWeekStart);
-    return (eventDate.getTime() === saturday.getTime() || eventDate.getTime() === sunday.getTime());
-  }
-  if (filter === "thismonth") return isSameMonth(eventDate, today);
+  
+  // Upcoming: handled on separate page
   return true;
 }
 
+const FILTER_OPTIONS: { key: HomeFilter; label: string }[] = [
+  { key: 'explore', label: 'Explore' },
+  { key: 'following', label: 'Following' },
+  { key: 'today', label: 'Today' },
+  { key: 'upcoming', label: 'Upcoming' },
+];
+
 export default function HomePage() {
+  const router = useRouter();
   const setEvents = useAppStore((state) => state.setEvents);
   const user = useAppStore((state) => state.user);
   const [allEvents, setAllEvents] = useState<Event[]>([]);
@@ -115,12 +115,31 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeFeaturedIndex, setActiveFeaturedIndex] = useState(0);
   const [imageKey, setImageKey] = useState(0); // Force image reload
-  const [activeFilter, setActiveFilter] = useState<HomeFilter>("all");
+  const [activeFilter, setActiveFilter] = useState<HomeFilter>("explore");
+  const [backgroundFetching, setBackgroundFetching] = useState(false);
+  const [joinedEventIds, setJoinedEventIds] = useState<string[]>([]);
+  const filterScrollRef = useRef<HTMLDivElement>(null);
+  const tabLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
+
+  // Load joined events from existing user data (don't call API again)
+  useEffect(() => {
+    if (!user?._id) {
+      setJoinedEventIds([]);
+      return;
+    }
+    // Use existing user data instead of calling API again
+    const joinedIds = getJoinedEventIds(user);
+    setJoinedEventIds(joinedIds);
+  }, [user?._id]);
 
   useEffect(() => {
-    const load = async () => {
+    const load = async (isBackground = false) => {
       try {
-        setLoading(true);
+        if (!isBackground) {
+          setLoading(true);
+        } else {
+          setBackgroundFetching(true);
+        }
         setError(null);
         const response = await eventsAPI.getApprovedEvents();
         if (response.success && response.events) {
@@ -146,7 +165,11 @@ export default function HomePage() {
             "Failed to load events."
         );
       } finally {
-        setLoading(false);
+        if (!isBackground) {
+          setLoading(false);
+        } else {
+          setBackgroundFetching(false);
+        }
       }
     };
     void load();
@@ -173,13 +196,45 @@ export default function HomePage() {
     setImageKey((k) => k + 1);
   }, [activeFeaturedIndex]);
 
+  // Auto-scroll to active tab
+  useEffect(() => {
+    const scrollToActive = () => {
+      if (!filterScrollRef.current) return;
+      const layout = tabLayoutsRef.current[activeFilter];
+      const idx = FILTER_OPTIONS.findIndex((f) => f.key === activeFilter);
+      const padding = 12;
+      let scrollX = 0;
+      
+      if (layout && typeof layout.x === 'number') {
+        scrollX = Math.max(0, layout.x - padding);
+      } else if (idx >= 0) {
+        scrollX = Math.max(0, idx * 80 - padding);
+      }
+      
+      filterScrollRef.current.scrollTo({ left: scrollX, behavior: 'smooth' });
+    };
+    
+    // Multiple retries for layout timing
+    setTimeout(scrollToActive, 0);
+    setTimeout(scrollToActive, 80);
+    setTimeout(scrollToActive, 200);
+  }, [activeFilter]);
+
   // Filter events based on active filter
   const filteredEvents = useMemo(() => {
-    if (activeFilter === "all") return allEvents;
+    if (activeFilter === "upcoming") return allEvents;
     return allEvents.filter((event) =>
-      eventMatchesFilter(event, activeFilter, user?._id)
+      eventMatchesFilter(event, activeFilter, user?._id, joinedEventIds)
     );
-  }, [allEvents, activeFilter, user?._id]);
+  }, [allEvents, activeFilter, user?._id, joinedEventIds]);
+
+  const handleFilterClick = (key: HomeFilter) => {
+    if (key === 'upcoming') {
+      router.push('/event-filter');
+    } else {
+      setActiveFilter(key);
+    }
+  };
 
   const hasEvents = useMemo(() => filteredEvents.length > 0, [filteredEvents.length]);
 
@@ -232,39 +287,52 @@ export default function HomePage() {
     <div className="bg-white min-h-screen">
       {/* Fixed Filter Bar - Mobile Only (as per Mobile App Design Guide) */}
       <header 
-        className="fixed top-0 left-0 right-0 z-10 bg-white border-b border-gray-200 sm:hidden"
+        className="fixed top-0 left-0 right-0 z-10 bg-white shadow-[0_0_10px_rgba(0,0,0,0.1)] sm:hidden overflow-hidden"
         style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))' }}
       >
-        <div className="flex overflow-x-auto px-3 pb-2 scrollbar-hide">
+        {/* Filter Tabs */}
+        <div 
+          ref={filterScrollRef}
+          className="flex overflow-x-auto px-3 pb-2 scrollbar-hide"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           <div className="flex gap-1.5">
-            {(
-              [
-                { key: "all", label: "All" },
-                { key: "myevents", label: "My Events" },
-                { key: "today", label: "Today" },
-                { key: "tomorrow", label: "Tomorrow" },
-                { key: "thisweek", label: "This Week" },
-                { key: "thisweekend", label: "This Weekend" },
-                { key: "nextweek", label: "Next Week" },
-                { key: "nextweekend", label: "Next Weekend" },
-                { key: "thismonth", label: "This Month" },
-              ] as { key: HomeFilter; label: string }[]
-            ).map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => setActiveFilter(filter.key)}
-                className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all ${
-                  activeFilter === filter.key
-                    ? "bg-primary/10 text-primary border-b-2 border-primary"
-                    : "bg-gray-100 text-gray-600"
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
+            {FILTER_OPTIONS.map((filter) => {
+              const isActive = activeFilter === filter.key;
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => handleFilterClick(filter.key)}
+                  ref={(el) => {
+                    if (el && filterScrollRef.current) {
+                      const rect = el.getBoundingClientRect();
+                      const containerRect = filterScrollRef.current.getBoundingClientRect();
+                      tabLayoutsRef.current[filter.key] = {
+                        x: rect.left - containerRect.left,
+                        width: rect.width
+                      };
+                    }
+                  }}
+                  className={`whitespace-nowrap rounded-sm px-2.5 py-1 text-sm font-semibold transition-all ${
+                    isActive
+                      ? "text-primary border-b-2 border-primary"
+                      : "text-gray-500"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
           </div>
         </div>
+        
+        {/* Loading Line (Background Fetch Indicator) */}
+        {backgroundFetching && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-200 overflow-hidden">
+            <div className="h-full bg-primary animate-loading-line" style={{ width: '40%' }} />
+          </div>
+        )}
       </header>
 
       {/* Desktop Layout - Unchanged */}
@@ -381,46 +449,56 @@ export default function HomePage() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-gray-900">
-                Upcoming events
+                {activeFilter === "explore" ? "Explore Events" : 
+                 activeFilter === "following" ? "Following" :
+                 activeFilter === "today" ? "Today's Events" :
+                 "Upcoming events"}
               </h2>
               <p className="text-xs text-gray-600">
-                Handpicked events happening in your network
+                {activeFilter === "explore" ? "All events happening in your network" :
+                 activeFilter === "following" ? "Events you've joined" :
+                 activeFilter === "today" ? "Events happening today" :
+                 "Handpicked events happening in your network"}
               </p>
             </div>
           </div>
 
-          {/* Desktop Filter Chips */}
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {(
-              [
-                { key: "all", label: "All" },
-                { key: "myevents", label: "My Events" },
-                { key: "today", label: "Today" },
-                { key: "tomorrow", label: "Tomorrow" },
-                { key: "thisweek", label: "This Week" },
-                { key: "thisweekend", label: "This Weekend" },
-                { key: "nextweek", label: "Next Week" },
-                { key: "nextweekend", label: "Next Weekend" },
-                { key: "thismonth", label: "This Month" },
-              ] as { key: HomeFilter; label: string }[]
-            ).map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => setActiveFilter(filter.key)}
-                className={`whitespace-nowrap rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
-                  activeFilter === filter.key
-                    ? "bg-primary/10 text-primary border-b-2 border-primary"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
+          {/* Desktop Filter Bar - All filters in one row */}
+          <div className="mb-4 relative">
+            <div className="flex gap-2 border-b border-gray-200 pb-2">
+              {FILTER_OPTIONS.map((filter) => {
+                const isActive = activeFilter === filter.key;
+                return (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    onClick={() => handleFilterClick(filter.key)}
+                    className={`whitespace-nowrap rounded-sm px-2.5 py-1 text-sm font-semibold transition-all ${
+                      isActive
+                        ? "text-primary border-b-2 border-primary"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </div>
+            
+            {/* Loading Line (Background Fetch Indicator) */}
+            {backgroundFetching && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-200 overflow-hidden">
+                <div className="h-full bg-primary animate-loading-line" style={{ width: '40%' }} />
+              </div>
+            )}
           </div>
           {!hasEvents ? (
             <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 py-10 text-center text-sm text-gray-600">
-              No events available yet.
+              {activeFilter === "following" 
+                ? "You haven't joined any events yet."
+                : activeFilter === "today"
+                ? "No events today."
+                : "No events available yet."}
             </div>
           ) : (
             <div className="rounded-xl bg-white p-2 shadow-sm">
@@ -446,34 +524,46 @@ export default function HomePage() {
       >
         {/* Page Heading */}
         <h1 className="px-3 mb-4 text-xl font-bold text-gray-900">
-          {activeFilter === "all" ? "All Events" : 
-           activeFilter === "myevents" ? "My Events" :
+          {activeFilter === "explore" ? "Explore Events" : 
+           activeFilter === "following" ? "Following" :
            activeFilter === "today" ? "Today's Events" :
-           activeFilter === "tomorrow" ? "Tomorrow's Events" :
-           activeFilter === "thisweek" ? "This Week's Events" :
-           activeFilter === "thisweekend" ? "This Weekend's Events" :
-           activeFilter === "nextweek" ? "Next Week's Events" :
-           activeFilter === "nextweekend" ? "Next Weekend's Events" :
-           activeFilter === "thismonth" ? "This Month's Events" : "All Events"}
+           "All Events"}
         </h1>
 
         {/* Mobile Event Grid - 2 columns as per Mobile App Design Guide */}
         {!hasEvents ? (
           <div className="flex flex-col items-center justify-center py-14 px-3 text-center">
-            <div className="text-5xl text-gray-400 mb-3">📅</div>
-            <p className="text-base font-medium text-gray-500 mb-1">No data found</p>
-            <p className="text-sm text-gray-600 mb-6 px-3">
-              {activeFilter === "myevents"
-                ? "You haven't created any events yet."
-                : "No events available yet."}
-            </p>
-            {activeFilter === "myevents" && (
-              <Link
-                href="/create-event"
-                className="bg-primary text-white px-8 py-4 rounded-xl text-base font-semibold"
-              >
-                Create event
-              </Link>
+            {activeFilter === "following" ? (
+              <>
+                <div className="text-5xl text-gray-400 mb-3">📅</div>
+                <p className="text-base font-medium text-gray-500 mb-1">You haven't joined any events yet.</p>
+                <p className="text-sm text-gray-600 mb-6 px-3">
+                  Start exploring events and join the ones you're interested in.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("explore")}
+                  className="bg-primary text-white px-8 py-4 rounded-xl text-base font-semibold"
+                >
+                  Explore events
+                </button>
+              </>
+            ) : activeFilter === "today" ? (
+              <>
+                <div className="text-5xl text-gray-400 mb-3">📅</div>
+                <p className="text-base font-medium text-gray-500 mb-1">No events today</p>
+                <p className="text-sm text-gray-600 mb-6 px-3">
+                  There are no events scheduled for today. Check out upcoming events!
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-5xl text-gray-400 mb-3">📅</div>
+                <p className="text-base font-medium text-gray-500 mb-1">No data found</p>
+                <p className="text-sm text-gray-600 mb-6 px-3">
+                  No events available yet.
+                </p>
+              </>
             )}
           </div>
         ) : (
@@ -487,5 +577,6 @@ export default function HomePage() {
     </div>
   );
 }
+
 
 

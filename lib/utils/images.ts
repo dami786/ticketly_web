@@ -15,13 +15,24 @@ export function getEventImageUrl(event: Partial<Event> & Record<string, any>) {
   // Prefer main image field, but fall back to possible alternative names
   let img: unknown = event.image ?? event.imageUrl ?? event.image_url ?? null;
 
+  // Debug logging in development
+  if (process.env.NODE_ENV === "development" && event.title) {
+    console.log(`[getEventImageUrl] Event: ${event.title}`, {
+      hasImage: !!event.image,
+      hasImageUrl: !!event.imageUrl,
+      hasImage_url: !!event.image_url,
+      imageValue: typeof img === "string" ? `${img.substring(0, 50)}...` : img,
+      imageType: typeof img
+    });
+  }
+
   if (!img || typeof img !== "string") {
     return FALLBACK_IMAGE;
   }
 
   const trimmed = img.trim();
 
-  if (!trimmed || trimmed === "null" || trimmed === "undefined") {
+  if (!trimmed || trimmed === "null" || trimmed === "undefined" || trimmed === "") {
     return FALLBACK_IMAGE;
   }
 
@@ -36,14 +47,26 @@ export function getEventImageUrl(event: Partial<Event> & Record<string, any>) {
       try {
         const url = new URL(trimmed);
         const path = url.pathname || "";
-        const origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+        let origin: string;
+        try {
+          const backendUrl = new URL(BACKEND_API_URL);
+          origin = backendUrl.origin;
+        } catch {
+          origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+        }
         return `${origin}${path}`;
       } catch {
         // Fallback: try to find /uploads
         const uploadsIndex = trimmed.indexOf("/uploads");
         if (uploadsIndex !== -1) {
           const path = trimmed.substring(uploadsIndex);
-          const origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+          let origin: string;
+          try {
+            const backendUrl = new URL(BACKEND_API_URL);
+            origin = backendUrl.origin;
+          } catch {
+            origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+          }
           return `${origin}${path}`;
         }
       }
@@ -98,14 +121,26 @@ export function getProfileImageUrl(user: {
       try {
         const url = new URL(trimmed);
         const path = url.pathname || "";
-        const origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+        let origin: string;
+        try {
+          const backendUrl = new URL(BACKEND_API_URL);
+          origin = backendUrl.origin;
+        } catch {
+          origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+        }
         return `${origin}${path}`;
       } catch {
         // Fallback: try to find /uploads
         const uploadsIndex = trimmed.indexOf("/uploads");
         if (uploadsIndex !== -1) {
           const path = trimmed.substring(uploadsIndex);
-          const origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+          let origin: string;
+          try {
+            const backendUrl = new URL(BACKEND_API_URL);
+            origin = backendUrl.origin;
+          } catch {
+            origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+          }
           return `${origin}${path}`;
         }
       }
@@ -116,7 +151,13 @@ export function getProfileImageUrl(user: {
   // Relative path from backend (e.g. /uploads/profiles/xyz.jpg)
   if (trimmed.startsWith("/")) {
     // Remove trailing /api if present to get the host origin
-    const origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+    let origin: string;
+    try {
+      const url = new URL(BACKEND_API_URL);
+      origin = url.origin;
+    } catch {
+      origin = BACKEND_API_URL.replace(/\/api\/?$/, "");
+    }
     return `${origin}${trimmed}`;
   }
 

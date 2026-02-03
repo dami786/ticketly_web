@@ -790,14 +790,8 @@ export default function EventDetailsPage() {
           <div className="bg-white rounded-2xl px-5 py-4 border border-gray-200 shadow-sm mb-4 relative overflow-hidden">
             {/* Background Loading Line */}
             {backgroundFetching && (
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-gray-200 z-1 overflow-hidden">
-                <div
-                  className="h-full bg-primary"
-                  style={{
-                    width: '40%',
-                    animation: 'loadingProgress 1.2s infinite'
-                  }}
-                />
+              <div className="absolute top-0 left-0 right-0 h-0.5 bg-gray-200 z-[1] overflow-hidden">
+                <div className="h-full bg-primary animate-loading-progress" />
               </div>
             )}
 

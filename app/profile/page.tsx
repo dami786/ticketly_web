@@ -232,56 +232,43 @@ export default function ProfilePage() {
     }
   };
 
-  // Try to load profile if we have a token but no user in store
+  // Load profile only once on mount (when component first mounts)
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (hasLoadedRef.current) return; // Already loaded
     
-    // If user exists, proceed normally
-    if (user) {
-      // 1) Always update profileImageUrl from user object if available
-      // This ensures state stays in sync with user object
-      const rawFromUser =
-        (user as any).profileImageUrl || (user as any).profileImage;
-      
-      if (rawFromUser) {
-        const resolved = resolveProfileImageUrl(rawFromUser);
-        if (resolved) {
-          console.log("useEffect - Updating profileImageUrl from user object:", resolved);
-          setProfileImageUrl(resolved);
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("ticketly_profile_image_url", resolved);
-          }
-        }
-      } else {
-        // 2) If no image in user object, try localStorage as fallback
-        if (typeof window !== "undefined") {
-          const stored = window.localStorage.getItem("ticketly_profile_image_url");
-          if (stored) {
-            console.log("useEffect - Restoring profileImageUrl from localStorage:", stored);
-            setProfileImageUrl(stored);
-          }
-        }
-      }
-
-      // Only load profile if we haven't loaded it yet (check loading state)
-      if (loading) {
-        void loadProfile();
-      }
-      return;
-    }
-
-    // If no user but we have a token, try to load profile directly
-    // Don't wait for authHydrating to be false - if we have a token, try loading
-    const token = getAccessToken();
-    if (token) {
-      console.log("🔑 Token found, loading profile...");
-      // Small delay to let AuthInitializer finish if it's running
-      const loadTimer = setTimeout(() => {
+    hasLoadedRef.current = true;
     void loadProfile();
-      }, 100);
-      return () => clearTimeout(loadTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
+
+  // Update profileImageUrl from user object (without calling API)
+  useEffect(() => {
+    if (!user) return;
+    
+    // Update profileImageUrl from user object if available
+    const rawFromUser =
+      (user as any).profileImageUrl || (user as any).profileImage;
+    
+    if (rawFromUser) {
+      const resolved = resolveProfileImageUrl(rawFromUser);
+      if (resolved) {
+        setProfileImageUrl(resolved);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("ticketly_profile_image_url", resolved);
+        }
+      }
+    } else {
+      // If no image in user object, try localStorage as fallback
+      if (typeof window !== "undefined") {
+        const stored = window.localStorage.getItem("ticketly_profile_image_url");
+        if (stored) {
+          setProfileImageUrl(stored);
+        }
+      }
     }
-  }, [user?._id, user?.profileImage, (user as any)?.profileImageUrl]);
+  }, [user?.profileImage, (user as any)?.profileImageUrl]); // Only update when image changes
 
   // Set mounted state on client side only
   useEffect(() => {

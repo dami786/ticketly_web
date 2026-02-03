@@ -17,8 +17,12 @@ import {
   FiCamera,
   FiSave,
   FiAlertCircle,
-  FiHash
+  FiHash,
+  FiChevronDown,
+  FiChevronUp,
+  FiChevronRight,
 } from "react-icons/fi";
+import { MdPalette } from "react-icons/md";
 import QRScanner from "../../../components/QRScanner";
 import { eventsAPI, type Event } from "../../../lib/api/events";
 import { ticketsAPI } from "../../../lib/api/tickets";
@@ -178,6 +182,7 @@ export default function CreatedEventDetailsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingTickets, setLoadingTickets] = useState(false);
+  const [backgroundFetching, setBackgroundFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TicketStatus>("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -188,17 +193,24 @@ export default function CreatedEventDetailsPage() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const { success, error: showError } = useToast();
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
 
   const eventId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
-  const loadEvent = async () => {
+  const loadEvent = async (isBackground = false) => {
     if (!eventId) {
       setError("Event ID is required.");
       setLoading(false);
       return;
     }
     try {
+      if (!isBackground && !event) {
       setLoading(true);
+      }
+      if (isBackground) {
+        setBackgroundFetching(true);
+      }
       setError(null);
       const response = await eventsAPI.getEventById(String(eventId));
       if (response.success && response.event) {
@@ -219,7 +231,12 @@ export default function CreatedEventDetailsPage() {
           "Failed to load event."
       );
     } finally {
+      if (!isBackground) {
       setLoading(false);
+      }
+      if (isBackground) {
+        setBackgroundFetching(false);
+      }
     }
   };
 
@@ -250,7 +267,7 @@ export default function CreatedEventDetailsPage() {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([loadEvent(), loadTickets()]);
+      await Promise.all([loadEvent(true), loadTickets()]);
     } finally {
       setRefreshing(false);
     }
@@ -303,6 +320,7 @@ export default function CreatedEventDetailsPage() {
   const handleScanQrClick = () => {
     setQrScannerOpen(true);
   };
+
 
   const filteredTickets = tickets.filter((ticket: Ticket) => {
     if (activeTab === "all") return true;
@@ -375,16 +393,22 @@ export default function CreatedEventDetailsPage() {
       <div className="sm:hidden">
         {/* Header Image Section */}
         <div className="relative w-full h-[300px]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={eventImageUrl || FALLBACK_IMAGE}
-            alt={event.title}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = FALLBACK_IMAGE;
-            }}
-          />
+          <button
+            type="button"
+            onClick={() => setImageViewerOpen(true)}
+            className="absolute inset-0 w-full h-full"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={eventImageUrl || FALLBACK_IMAGE}
+              alt={event.title}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = FALLBACK_IMAGE;
+              }}
+            />
+          </button>
 
           {/* Back Button */}
           <button
@@ -408,7 +432,14 @@ export default function CreatedEventDetailsPage() {
         </div>
 
         {/* Event Info Card (Sticky) */}
-        <div className="bg-white rounded-t-3xl -mt-5 p-5 border-t border-gray-200 sticky top-0 z-5">
+        <div className="bg-white rounded-t-3xl -mt-5 p-5 border-t border-gray-200 sticky top-0 z-5 relative overflow-hidden">
+          {/* Loading Line (Background Fetch) */}
+          {backgroundFetching && (
+            <div className="absolute inset-x-0 top-0 h-0.5 bg-gray-200 overflow-hidden">
+              <div className="h-full bg-primary animate-loading-progress" />
+            </div>
+          )}
+
           {/* Title, Status Badge & Edit Button Row */}
           <div className="flex flex-row justify-between items-start mb-6">
             <h1 className="text-gray-900 text-2xl font-bold flex-1 mr-3">{event.title}</h1>
@@ -435,71 +466,110 @@ export default function CreatedEventDetailsPage() {
             </div>
           </div>
 
-          {/* Event Date & Time */}
-          <div className="flex flex-row mb-5 items-start">
-            <FiCalendar size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-            <div className="flex-1">
-              <div className="text-gray-900 text-sm font-semibold mb-1">Event Date & Time</div>
-              <div className="text-gray-700 text-sm mb-0.5">
-                {formatEventDate(event.date, event.time)}
-              </div>
-            </div>
-          </div>
+          {/* Collapsible Event Details Header */}
+          <button
+            type="button"
+            onClick={() => setDetailsExpanded((prev) => !prev)}
+            className="mb-2 flex w-full flex-row items-center justify-between"
+          >
+            <span className="text-gray-900 text-sm font-semibold">Event details</span>
+            {detailsExpanded ? (
+              <FiChevronUp size={18} className="text-[#6B7280]" />
+            ) : (
+              <FiChevronDown size={18} className="text-[#6B7280]" />
+            )}
+          </button>
 
-          {/* Location (Optional) */}
-          {event.location && (
-            <div className="flex flex-row mb-5 items-start">
-              <FiMapPin size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-              <div className="flex-1">
-                <div className="text-gray-900 text-sm font-semibold mb-1">Location</div>
-                <div className="text-gray-700 text-sm mb-0.5">{event.location}</div>
+          {detailsExpanded && (
+            <>
+              {/* Event Date & Time */}
+              <div className="flex flex-row mb-5 items-start">
+                <FiCalendar size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-gray-900 text-sm font-semibold mb-1">Event Date & Time</div>
+                  <div className="text-gray-700 text-sm mb-0.5">
+                    {formatEventDate(event.date, event.time)}
+                  </div>
+                </div>
               </div>
-            </div>
+
+              {/* Location (Optional) */}
+              {event.location && (
+                <div className="flex flex-row mb-5 items-start">
+                  <FiMapPin size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-gray-900 text-sm font-semibold mb-1">Location</div>
+                    <div className="text-gray-700 text-sm mb-0.5">{event.location}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Description (Optional) */}
+              {event.description && (
+                <div className="mb-5">
+                  <div className="text-gray-900 text-sm font-semibold mb-1">Description</div>
+                  <div className="text-gray-700 text-sm leading-6">{event.description}</div>
+                </div>
+              )}
+
+              {/* Gender (Optional) */}
+              {(event as any).gender && (
+                <div className="flex flex-row mb-5 items-start">
+                  <FiUser size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-gray-900 text-sm font-semibold mb-1">Gender</div>
+                    <div className="text-gray-700 text-sm mb-0.5 capitalize">{(event as any).gender}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Ticket Price */}
+              <div className="flex flex-row mb-5 items-start">
+                <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-gray-900 text-sm font-semibold mb-1">Ticket Price</div>
+                  <div className="text-gray-700 text-sm mb-0.5">{getTicketPrice()}</div>
+                </div>
+              </div>
+
+              {/* Total Tickets Sold */}
+              <div className="flex flex-row items-start mb-4">
+                <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-gray-900 text-sm font-semibold mb-1">Total Tickets</div>
+                  <div className="text-gray-700 text-sm mb-0.5">
+                    {tickets.length} {tickets.length === 1 ? "ticket" : "tickets"} sold
+                  </div>
+                </div>
+              </div>
+
+            </>
           )}
 
-          {/* Description (Optional) */}
-          {event.description && (
-            <div className="mb-5">
-              <div className="text-gray-900 text-sm font-semibold mb-1">Description</div>
-              <div className="text-gray-700 text-sm leading-6">{event.description}</div>
-            </div>
-          )}
-
-          {/* Gender (Optional) */}
-          {event.gender && (
-            <div className="flex flex-row mb-5 items-start">
-              <FiUser size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-              <div className="flex-1">
-                <div className="text-gray-900 text-sm font-semibold mb-1">Gender</div>
-                <div className="text-gray-700 text-sm mb-0.5 capitalize">{event.gender}</div>
+          {/* Event Ticket Theme Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (eventId) {
+                router.push(`/event-ticket-theme/${eventId}`);
+              }
+            }}
+            className="mt-4 flex w-full flex-row items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 hover:bg-gray-100 transition-colors"
+          >
+            <div className="flex flex-row items-center gap-2">
+              <MdPalette size={16} className="text-primary" />
+              <div className="flex flex-col items-start">
+                <span className="text-xs font-semibold text-gray-900">Event Ticket</span>
+                <span className="text-[10px] text-gray-600">Customize colors &amp; look</span>
               </div>
             </div>
-          )}
-
-          {/* Ticket Price */}
-          <div className="flex flex-row mb-5 items-start">
-            <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-            <div className="flex-1">
-              <div className="text-gray-900 text-sm font-semibold mb-1">Ticket Price</div>
-              <div className="text-gray-700 text-sm mb-0.5">{getTicketPrice()}</div>
-            </div>
-          </div>
-
-          {/* Total Tickets Sold */}
-          <div className="flex flex-row items-start">
-            <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-            <div className="flex-1">
-              <div className="text-gray-900 text-sm font-semibold mb-1">Total Tickets</div>
-              <div className="text-gray-700 text-sm mb-0.5">
-                {tickets.length} {tickets.length === 1 ? "ticket" : "tickets"} sold
-              </div>
-            </div>
-          </div>
+            <FiChevronRight size={16} className="text-gray-400" />
+          </button>
         </div>
 
         {/* Tabs Section (Sticky) */}
-        <div className="px-3 pt-5 pb-4 bg-white sticky top-0 z-4 border-b border-gray-200">
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div className="px-2 pt-2 pb-2 bg-white sticky top-0 z-4">
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {tabs.map((tab) => {
               const isActive = activeTab === tab.key;
               const count = getStatusCount(tab.key);
@@ -508,45 +578,43 @@ export default function CreatedEventDetailsPage() {
                   key={tab.key}
                   type="button"
                   onClick={() => setActiveTab(tab.key)}
-                  className={`py-2.5 px-4 rounded-xl flex flex-row items-center gap-2 whitespace-nowrap ${
+                  className={`py-1.5 px-3 rounded-lg flex flex-row items-center gap-1.5 whitespace-nowrap ${
                     isActive ? "bg-primary" : "bg-gray-100"
                   }`}
                 >
                   <span
-                    className={`text-xs font-semibold ${
+                    className={`text-[10px] font-semibold ${
                       isActive ? "text-white" : "text-gray-600"
                     }`}
                   >
                     {tab.label}
                   </span>
                   <div
-                    className={`px-2 py-0.5 rounded-full ${
+                    className={`px-1.5 py-0.5 rounded-full ${
                       isActive ? "bg-white/20" : "bg-[#374151]"
                     }`}
                   >
                     <span
-                      className={`text-[10px] font-bold ${
-                        isActive ? "text-white" : "text-gray-600"
-                      }`}
+                      className={`text-[9px] font-bold text-white`}
                     >
                       {count}
                     </span>
                   </div>
-                </button>
+          </button>
               );
             })}
           </div>
         </div>
 
         {/* Update Ticket Status Button */}
-        <div className="px-3 mt-4 mb-2">
+        <div className="px-2 mt-2 mb-1">
           <button
             type="button"
             onClick={() => setUpdateModalOpen(true)}
-            className="bg-primary py-4 px-5 rounded-xl flex flex-row items-center justify-center w-full"
+            className="bg-primary py-2.5 px-3 rounded-lg flex flex-row items-center justify-center w-full"
           >
-            <FiEdit size={20} className="text-white mr-2" />
-            <span className="text-white text-base font-semibold">Update Ticket Status by Ticket #</span>
+            <FiEdit size={14} className="text-white mr-1.5" />
+            <span className="text-white text-xs font-semibold">Update Ticket Status by Ticket #</span>
           </button>
         </div>
 
@@ -578,58 +646,58 @@ export default function CreatedEventDetailsPage() {
               return (
                 <div
                   key={ticket.id || ticket._id}
-                  className={`rounded-xl border-2 p-4 mb-3 ${statusInfo.bgClass} ${statusInfo.borderClass}`}
+                  className={`rounded-lg border p-2.5 mb-2 ${statusInfo.bgClass} ${statusInfo.borderClass}`}
                 >
                   {/* Ticket Header */}
-                  <div className="flex flex-row items-start justify-between mb-3">
+                  <div className="flex flex-row items-start justify-between mb-2">
                     <div className="flex flex-row items-center flex-1">
-                      <StatusIcon size={20} className="mr-2" style={{ color: statusInfo.iconColor }} />
-                      <span className="text-gray-900 text-sm font-bold flex-1">{displayName}</span>
+                      <StatusIcon size={16} className="mr-2" style={{ color: statusInfo.iconColor }} />
+                      <span className="text-gray-900 text-xs font-bold flex-1 truncate">{displayName}</span>
                     </div>
-                    <div className={`px-3 py-1 rounded-full ${statusInfo.badgeClass}`}>
-                      <span className="text-white text-[10px] font-bold uppercase">
+                    <div className={`px-2 py-0.5 rounded-full ${statusInfo.badgeClass}`}>
+                      <span className="text-white text-[9px] font-bold uppercase">
                         {statusInfo.label}
                       </span>
                     </div>
                   </div>
 
                   {/* Ticket Details */}
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1">
                     {/* Access Key */}
                     {ticket.accessKey && (
-                      <div className="flex flex-row items-center mb-2">
-                        <FiHash size={14} className="text-[#9CA3AF] mr-2" />
-                        <span className="text-gray-700 text-[10px] font-mono flex-1 truncate">
+                      <div className="flex flex-row items-center">
+                        <FiHash size={12} className="text-[#9CA3AF] mr-2" />
+                        <span className="text-gray-700 text-[9px] font-mono flex-1 truncate">
                           {ticket.accessKey}
                         </span>
                       </div>
                     )}
 
                     {/* Email */}
-                    <div className="flex flex-row items-center mb-2">
-                      <FiMail size={14} className="text-[#6B7280] mr-2" />
-                      <span className="text-gray-700 text-xs flex-1 truncate">{displayEmail}</span>
+                    <div className="flex flex-row items-center">
+                      <FiMail size={12} className="text-[#9CA3AF] mr-2" />
+                      <span className="text-gray-700 text-[10px] flex-1 truncate">{displayEmail}</span>
                     </div>
 
                     {/* Phone */}
-                    <div className="flex flex-row items-center mb-2">
-                      <FiPhone size={14} className="text-[#6B7280] mr-2" />
-                      <span className="text-gray-700 text-xs">{displayPhone}</span>
+                    <div className="flex flex-row items-center">
+                      <FiPhone size={12} className="text-[#9CA3AF] mr-2" />
+                      <span className="text-gray-700 text-[10px]">{displayPhone}</span>
                     </div>
 
                     {/* Date */}
                     {ticket.createdAt && (
-                      <div className="flex flex-row items-center mb-2">
-                        <FiCalendar size={14} className="text-[#9CA3AF] mr-2" />
-                        <span className="text-gray-600 text-[10px]">{formatDate(ticket.createdAt)}</span>
+                      <div className="flex flex-row items-center">
+                        <FiCalendar size={12} className="text-[#9CA3AF] mr-2" />
+                        <span className="text-gray-600 text-[9px]">{formatDate(ticket.createdAt)}</span>
                       </div>
                     )}
 
                     {/* Username */}
                     {ticket.user?.username && (
-                      <div className="flex flex-row items-center mt-2">
-                        <FiUser size={14} className="text-[#9CA3AF] mr-2" />
-                        <span className="text-gray-600 text-[10px]">@{ticket.user.username}</span>
+                      <div className="flex flex-row items-center">
+                        <FiUser size={12} className="text-[#9CA3AF] mr-2" />
+                        <span className="text-gray-600 text-[9px]">@{ticket.user.username}</span>
                       </div>
                     )}
                   </div>
@@ -645,16 +713,22 @@ export default function CreatedEventDetailsPage() {
         <div className="mx-auto max-w-5xl px-4 pb-20 pt-6 sm:px-6 sm:pt-8">
           {/* Header Image Section */}
           <div className="relative w-full h-[300px] rounded-2xl overflow-hidden mb-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={eventImageUrl || FALLBACK_IMAGE}
-              alt={event.title}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = FALLBACK_IMAGE;
-              }}
-            />
+            <button
+              type="button"
+              onClick={() => setImageViewerOpen(true)}
+              className="absolute inset-0 w-full h-full"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={eventImageUrl || FALLBACK_IMAGE}
+                alt={event.title}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = FALLBACK_IMAGE;
+                }}
+              />
+            </button>
 
             {/* Back Button */}
             <button
@@ -676,7 +750,14 @@ export default function CreatedEventDetailsPage() {
           </div>
 
           {/* Event Info Card */}
-          <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm mb-4">
+          <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm mb-4 relative overflow-hidden">
+            {/* Loading Line (Background Fetch) */}
+            {backgroundFetching && (
+              <div className="absolute inset-x-0 top-0 h-0.5 bg-gray-200 overflow-hidden">
+                <div className="h-full bg-primary animate-loading-progress" />
+              </div>
+            )}
+
             {/* Title, Status Badge & Edit Button Row */}
             <div className="flex flex-row justify-between items-start mb-6">
               <h1 className="text-gray-900 text-2xl font-bold flex-1 mr-3">{event.title}</h1>
@@ -684,12 +765,12 @@ export default function CreatedEventDetailsPage() {
                 {/* Status Badge */}
                 <div className="bg-gray-100 py-1.5 px-3 rounded-xl">
                   <span className="text-gray-700 text-xs font-semibold">
-                    {event.status === "approved"
-                      ? "Approved"
-                      : event.status === "pending"
-                      ? "Pending"
-                      : "Draft"}
-                  </span>
+                {event.status === "approved"
+                  ? "Approved"
+                  : event.status === "pending"
+                  ? "Pending"
+                  : "Draft"}
+              </span>
                 </div>
                 {/* Edit Button */}
                 <button
@@ -703,69 +784,108 @@ export default function CreatedEventDetailsPage() {
               </div>
             </div>
 
-            {/* Event Details Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Event Date & Time */}
-              <div className="flex flex-row items-start">
-                <FiCalendar size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-                <div className="flex-1">
-                  <div className="text-gray-900 text-sm font-semibold mb-1">Event Date & Time</div>
-                  <div className="text-gray-700 text-sm mb-0.5">
-                    {formatEventDate(event.date, event.time)}
-                  </div>
+            {/* Collapsible Event Details Header */}
+            <button
+              type="button"
+              onClick={() => setDetailsExpanded((prev) => !prev)}
+              className="mb-3 flex w-full flex-row items-center justify-between"
+            >
+              <span className="text-gray-900 text-sm font-semibold">Event details</span>
+              {detailsExpanded ? (
+                <FiChevronUp size={18} className="text-[#6B7280]" />
+              ) : (
+                <FiChevronDown size={18} className="text-[#6B7280]" />
+              )}
+            </button>
+
+            {detailsExpanded && (
+              <>
+                {/* Event Details Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Event Date & Time */}
+                  <div className="flex flex-row items-start">
+                    <FiCalendar size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-gray-900 text-sm font-semibold mb-1">Event Date & Time</div>
+                      <div className="text-gray-700 text-sm mb-0.5">
+                        {formatEventDate(event.date, event.time)}
+                      </div>
+                    </div>
+            </div>
+
+                  {/* Location (Optional) */}
+                  {event.location && (
+                    <div className="flex flex-row items-start">
+                      <FiMapPin size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="text-gray-900 text-sm font-semibold mb-1">Location</div>
+                        <div className="text-gray-700 text-sm mb-0.5">{event.location}</div>
+                      </div>
+                </div>
+                  )}
+
+                  {/* Gender (Optional) */}
+                  {(event as any).gender && (
+                    <div className="flex flex-row items-start">
+                      <FiUser size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="text-gray-900 text-sm font-semibold mb-1">Gender</div>
+                        <div className="text-gray-700 text-sm mb-0.5 capitalize">{(event as any).gender}</div>
+                </div>
+              </div>
+                  )}
+
+                  {/* Ticket Price */}
+                  <div className="flex flex-row items-start">
+                    <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-gray-900 text-sm font-semibold mb-1">Ticket Price</div>
+                      <div className="text-gray-700 text-sm mb-0.5">{getTicketPrice()}</div>
                 </div>
               </div>
 
-              {/* Location (Optional) */}
-              {event.location && (
-                <div className="flex flex-row items-start">
-                  <FiMapPin size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="text-gray-900 text-sm font-semibold mb-1">Location</div>
-                    <div className="text-gray-700 text-sm mb-0.5">{event.location}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Gender (Optional) */}
-              {event.gender && (
-                <div className="flex flex-row items-start">
-                  <FiUser size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="text-gray-900 text-sm font-semibold mb-1">Gender</div>
-                    <div className="text-gray-700 text-sm mb-0.5 capitalize">{event.gender}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Ticket Price */}
-              <div className="flex flex-row items-start">
-                <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-                <div className="flex-1">
-                  <div className="text-gray-900 text-sm font-semibold mb-1">Ticket Price</div>
-                  <div className="text-gray-700 text-sm mb-0.5">{getTicketPrice()}</div>
-                </div>
-              </div>
-
-              {/* Total Tickets Sold */}
-              <div className="flex flex-row items-start">
-                <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
-                <div className="flex-1">
-                  <div className="text-gray-900 text-sm font-semibold mb-1">Total Tickets</div>
-                  <div className="text-gray-700 text-sm mb-0.5">
-                    {tickets.length} {tickets.length === 1 ? "ticket" : "tickets"} sold
-                  </div>
+                  {/* Total Tickets Sold */}
+                  <div className="flex flex-row items-start">
+                    <FiDollarSign size={20} className="text-[#6B7280] mr-3 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-gray-900 text-sm font-semibold mb-1">Total Tickets</div>
+                      <div className="text-gray-700 text-sm mb-0.5">
+                        {tickets.length} {tickets.length === 1 ? "ticket" : "tickets"} sold
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Description (Optional) */}
-            {event.description && (
-              <div className="mt-4">
-                <div className="text-gray-900 text-sm font-semibold mb-1">Description</div>
-                <div className="text-gray-700 text-sm leading-6">{event.description}</div>
-              </div>
+                {/* Description (Optional) */}
+                {event.description && (
+                  <div className="mt-4">
+                    <div className="text-gray-900 text-sm font-semibold mb-1">Description</div>
+                    <div className="text-gray-700 text-sm leading-6">{event.description}</div>
+                  </div>
+                )}
+
+              </>
             )}
+
+            {/* Event Ticket Theme Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (eventId) {
+                  router.push(`/event-ticket-theme/${eventId}`);
+                }
+              }}
+              className="mt-4 flex w-full flex-row items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 hover:bg-gray-100 transition-colors"
+            >
+              <div className="flex flex-row items-center gap-2">
+                <MdPalette size={16} className="text-primary" />
+                <div className="flex flex-col items-start">
+                  <span className="text-xs font-semibold text-gray-900">Event Ticket</span>
+                  <span className="text-[10px] text-gray-600">Customize colors &amp; look</span>
+                </div>
+              </div>
+              <FiChevronRight size={16} className="text-gray-400" />
+            </button>
           </div>
 
           {/* Tabs Section */}
@@ -795,13 +915,13 @@ export default function CreatedEventDetailsPage() {
                         isActive ? "bg-white/20" : "bg-[#374151]"
                       }`}
                     >
-                      <span
+                    <span
                         className={`text-[10px] font-bold ${
                           isActive ? "text-white" : "text-gray-600"
-                        }`}
-                      >
-                        {count}
-                      </span>
+                      }`}
+                    >
+                      {count}
+                    </span>
                     </div>
                   </button>
                 );
@@ -814,10 +934,10 @@ export default function CreatedEventDetailsPage() {
             <button
               type="button"
               onClick={() => setUpdateModalOpen(true)}
-              className="bg-primary py-4 px-5 rounded-xl flex flex-row items-center justify-center w-full"
+              className="bg-primary py-2.5 px-3 rounded-lg flex flex-row items-center justify-center w-full"
             >
-              <FiEdit size={20} className="text-white mr-2" />
-              <span className="text-white text-base font-semibold">Update Ticket Status by Ticket #</span>
+              <FiEdit size={14} className="text-white mr-1.5" />
+              <span className="text-white text-xs font-semibold">Update Ticket Status by Ticket #</span>
             </button>
           </div>
 
@@ -832,7 +952,7 @@ export default function CreatedEventDetailsPage() {
               <div className="py-10 flex items-center justify-center flex-col">
                 <FiDollarSign size={48} className="text-[#6B7280]" />
                 <p className="text-[#6B7280] text-sm mt-4">
-                  {activeTab === "all"
+                {activeTab === "all"
                     ? "No tickets found"
                     : `No ${tabs.find((t) => t.key === activeTab)?.label.toLowerCase()} tickets`}
                 </p>
@@ -862,7 +982,7 @@ export default function CreatedEventDetailsPage() {
                           {statusInfo.label}
                         </span>
                       </div>
-                    </div>
+                      </div>
 
                     {/* Ticket Details */}
                     <div className="flex flex-col">
@@ -872,8 +992,8 @@ export default function CreatedEventDetailsPage() {
                           <FiDollarSign size={14} className="text-[#9CA3AF] mr-2" />
                           <span className="text-gray-700 text-[10px] font-mono flex-1 truncate">
                             {ticket.accessKey}
-                          </span>
-                        </div>
+                      </span>
+                    </div>
                       )}
 
                       {/* Email */}
@@ -889,7 +1009,7 @@ export default function CreatedEventDetailsPage() {
                       </div>
 
                       {/* Date */}
-                      {ticket.createdAt && (
+                    {ticket.createdAt && (
                         <div className="flex flex-row items-center mb-2">
                           <FiCalendar size={14} className="text-[#9CA3AF] mr-2" />
                           <span className="text-gray-600 text-[10px]">{formatDate(ticket.createdAt)}</span>
@@ -901,8 +1021,8 @@ export default function CreatedEventDetailsPage() {
                         <div className="flex flex-row items-center mt-2">
                           <FiUser size={14} className="text-[#9CA3AF] mr-2" />
                           <span className="text-gray-600 text-[10px]">@{ticket.user.username}</span>
-                        </div>
-                      )}
+                      </div>
+                    )}
                     </div>
                   </div>
                 );
@@ -930,31 +1050,30 @@ export default function CreatedEventDetailsPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Title */}
-            <h2 className="text-white text-xl font-bold mb-3 text-center">Update Ticket Status</h2>
-            <p className="text-[#D1D5DB] text-sm mb-4">
-              Enter the ticket number (Ticket #) to update its status. Only tickets with "Submitted" status
-              can be updated.
+            <h2 className="text-white text-base font-bold mb-2 text-center">Update Ticket Status</h2>
+            <p className="text-[#D1D5DB] text-xs mb-3">
+              Enter ticket # to update status. Only "Submitted" tickets can be updated.
             </p>
 
             {/* Error Message */}
             {updateError && (
-              <div className="bg-[#EF4444]/20 border border-[#EF4444]/50 rounded-xl p-3 mb-4 flex flex-row items-center">
-                <FiAlertCircle size={20} className="text-[#EF4444] mr-2" />
-                <span className="text-[#EF4444] text-sm flex-1">{updateError}</span>
+              <div className="bg-[#EF4444]/20 border border-[#EF4444]/50 rounded-lg p-2 mb-3 flex flex-row items-center">
+                <FiAlertCircle size={16} className="text-[#EF4444] mr-2" />
+                <span className="text-[#EF4444] text-xs flex-1">{updateError}</span>
               </div>
             )}
 
             {/* Ticket Number Input */}
-            <div className="mb-4">
-              <div className="flex flex-row items-center justify-between mb-2">
-                <label className="text-white text-sm font-semibold">Ticket Number</label>
+            <div className="mb-3">
+              <div className="flex flex-row items-center justify-between mb-1">
+                <label className="text-white text-xs font-semibold">Ticket Number</label>
                 <button
                   type="button"
                   onClick={handleScanQrClick}
-                  className="bg-primary py-1.5 px-3 rounded-lg flex flex-row items-center"
+                  className="bg-primary py-1 px-2 rounded flex flex-row items-center"
                 >
-                  <FiCamera size={16} className="text-white mr-1" />
-                  <span className="text-white text-xs font-semibold">Scan QR</span>
+                  <FiCamera size={12} className="text-white mr-1" />
+                  <span className="text-white text-[10px] font-semibold">Scan QR</span>
                 </button>
               </div>
               <input
@@ -965,21 +1084,21 @@ export default function CreatedEventDetailsPage() {
                   if (updateError) setUpdateError(null);
                 }}
                 placeholder="Enter ticket # (e.g., TK-1234567890-ABC123-4567)"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-[#6B7280] outline-none"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-900 text-xs placeholder:text-[#6B7280] outline-none"
                 autoCapitalize="none"
                 autoCorrect="off"
               />
             </div>
 
             {/* Status Selection */}
-            <div className="mb-6">
-              <label className="text-white text-sm font-semibold mb-2 block">New Status</label>
-              <div className="flex flex-row gap-3">
+            <div className="mb-3">
+              <label className="text-white text-xs font-semibold mb-1 block">New Status</label>
+              <div className="flex flex-row gap-2">
                 {/* Used Button */}
                 <button
                   type="button"
                   onClick={() => setSelectedStatus("used")}
-                  className={`flex-1 py-3 px-4 rounded-xl border-2 flex flex-row items-center justify-center ${
+                  className={`flex-1 py-2 px-3 rounded-lg border flex flex-row items-center justify-center ${
                     selectedStatus === "used"
                       ? "bg-[#10B981]/20 border-[#10B981]"
                       : "bg-[#0F0F0F] border-[#374151]"
@@ -987,14 +1106,14 @@ export default function CreatedEventDetailsPage() {
                 >
                   <div className="flex flex-row items-center">
                     <FiCheck
-                      size={20}
-                      className="mr-1.5"
+                      size={14}
+                      className="mr-1"
                       style={{
                         color: selectedStatus === "used" ? "#10B981" : "#9CA3AF"
                       }}
                     />
                     <span
-                      className="text-sm font-semibold"
+                      className="text-xs font-semibold"
                       style={{
                         color: selectedStatus === "used" ? "#10B981" : "#9CA3AF"
                       }}
@@ -1008,7 +1127,7 @@ export default function CreatedEventDetailsPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedStatus("cancelled")}
-                  className={`flex-1 py-3 px-4 rounded-xl border-2 flex flex-row items-center justify-center ${
+                  className={`flex-1 py-2 px-3 rounded-lg border flex flex-row items-center justify-center ${
                     selectedStatus === "cancelled"
                       ? "bg-[#EF4444]/20 border-[#EF4444]"
                       : "bg-[#0F0F0F] border-[#374151]"
@@ -1016,14 +1135,14 @@ export default function CreatedEventDetailsPage() {
                 >
                   <div className="flex flex-row items-center">
                     <FiX
-                      size={20}
-                      className="mr-1.5"
+                      size={14}
+                      className="mr-1"
                       style={{
                         color: selectedStatus === "cancelled" ? "#EF4444" : "#9CA3AF"
                       }}
                     />
                     <span
-                      className="text-sm font-semibold"
+                      className="text-xs font-semibold"
                       style={{
                         color: selectedStatus === "cancelled" ? "#EF4444" : "#9CA3AF"
                       }}
@@ -1036,7 +1155,7 @@ export default function CreatedEventDetailsPage() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-row gap-3">
+            <div className="flex flex-row gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -1047,22 +1166,22 @@ export default function CreatedEventDetailsPage() {
                   setUpdateError(null);
                 }}
                 disabled={updatingStatus}
-                className="flex-1 bg-[#374151] py-3 px-4 rounded-xl"
+                className="flex-1 bg-[#374151] py-2 px-3 rounded-lg"
               >
-                <span className="text-white text-center font-semibold">Cancel</span>
+                <span className="text-white text-xs text-center font-semibold">Cancel</span>
               </button>
               <button
                 type="button"
                 onClick={handleUpdateTicketStatus}
                 disabled={updatingStatus || !ticketNumber.trim() || !selectedStatus}
-                className="flex-1 bg-primary py-3 px-4 rounded-xl flex flex-row items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex-1 bg-primary py-2 px-3 rounded-lg flex flex-row items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {updatingStatus ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 ) : (
                   <>
-                    <FiSave size={20} className="text-white mr-1.5" />
-                    <span className="text-white text-center font-semibold">Update</span>
+                    <FiSave size={14} className="text-white mr-1" />
+                    <span className="text-white text-xs text-center font-semibold">Update</span>
                   </>
                 )}
               </button>
@@ -1082,6 +1201,38 @@ export default function CreatedEventDetailsPage() {
           success("QR code scanned. Ticket number filled automatically.");
         }}
       />
+
+      {/* Image Fullscreen Modal */}
+      {imageViewerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+          onClick={() => setImageViewerOpen(false)}
+        >
+          <div
+            className="relative flex items-center justify-center w-full h-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setImageViewerOpen(false)}
+              className="absolute right-4 top-4 rounded-full bg-white/20 p-2 text-white hover:bg-white/30"
+            >
+              <span className="text-sm font-semibold">✕</span>
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={eventImageUrl || FALLBACK_IMAGE}
+              alt={event.title}
+              className="max-h-[90vh] max-w-[90vw] object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = FALLBACK_IMAGE;
+              }}
+            />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

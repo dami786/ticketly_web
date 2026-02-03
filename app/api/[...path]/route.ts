@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_API_URL } from "../../../lib/config";
 
-const API_BASE_URL = BACKEND_API_URL;
-
 // For uploads, the backend serves files directly without /api prefix
 // So we need to handle /uploads paths specially
 const isUploadPath = (path: string) => path.startsWith("uploads/");

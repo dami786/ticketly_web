@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { FiCompass, FiHome, FiPlusCircle, FiSearch, FiUser } from "react-icons/fi";
 import AuthInitializer from "../components/AuthInitializer";
@@ -10,6 +10,7 @@ import "./globals.css";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const navItems = [
     {
@@ -84,22 +85,21 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               </nav>
             </div>
           </header>
-          <main className="flex-1 pb-14 sm:pb-0">{children}</main>
+          <main className="flex-1 pb-20 sm:pb-0">{children}</main>
 
           {/* Toast Container */}
           <ToastContainer />
 
-          {/* Mobile bottom tab bar - as per Mobile App Design Guide */}
+          {/* Mobile bottom tab bar - matches Mobile App bottom tab spec */}
           <nav 
-            className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-center border-t border-gray-200 bg-white/95 backdrop-blur-sm text-gray-600 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] sm:hidden"
+            className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-center border-t border-gray-200 bg-white text-gray-600 shadow-[0_-2px_8px_rgba(0,0,0,0.05)] sm:hidden"
             style={{ 
-              height: '56px',
-              paddingTop: '4px',
+              height: "56px",
               paddingBottom: 'calc(36px + env(safe-area-inset-bottom))',
               minHeight: 'calc(56px + env(safe-area-inset-bottom))'
             }}
           >
-            <div className="flex items-center justify-center gap-12 h-full w-full max-w-md mx-auto">
+            <div className="flex items-center justify-around h-full w-full max-w-md mx-auto px-1">
               <Link
                 href="/"
                 className={`relative flex flex-col items-center justify-center h-full transition-all duration-200 ${
@@ -109,7 +109,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 }`}
               >
                 <div className={`relative transition-all duration-200 ${pathname === "/" ? "scale-110" : "scale-100"}`}>
-                  <FiHome size={24} />
+                  {/* Discover tab - use compass-style icon per spec */}
+                  <FiCompass size={20} />
                   {pathname === "/" && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
                   )}
@@ -128,7 +129,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 }`}
               >
                 <div className={`relative transition-all duration-200 ${pathname.startsWith("/explore") ? "scale-110" : "scale-100"}`}>
-                  <FiCompass size={24} />
+                  {/* Search tab - magnifying glass icon per spec */}
+                  <FiSearch size={20} />
                   {pathname.startsWith("/explore") && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
                   )}
@@ -138,16 +140,28 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 )}
               </Link>
 
-              <Link
-                href="/create-event"
+              {/* Create tab - custom handler for future draft support */}
+              <button
+                type="button"
                 className={`relative flex flex-col items-center justify-center h-full transition-all duration-200 ${
                   pathname.startsWith("/create-event")
                     ? "text-primary"
                     : "text-gray-600 active:opacity-70"
                 }`}
+                onClick={() => {
+                  try {
+                    if (typeof window !== "undefined") {
+                      // Reserved for future draft logic:
+                      // const draft = window.localStorage.getItem("CREATE_EVENT_DRAFT_KEY");
+                    }
+                  } catch {
+                    // ignore localStorage errors
+                  }
+                  router.push("/create-event");
+                }}
               >
                 <div className={`relative transition-all duration-200 ${pathname.startsWith("/create-event") ? "scale-110" : "scale-100"}`}>
-                  <FiPlusCircle size={24} />
+                  <FiPlusCircle size={20} />
                   {pathname.startsWith("/create-event") && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
                   )}
@@ -155,7 +169,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 {pathname.startsWith("/create-event") && (
                   <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full"></span>
                 )}
-              </Link>
+              </button>
 
               <Link
                 href="/profile"
@@ -166,7 +180,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 }`}
               >
                 <div className={`relative transition-all duration-200 ${pathname.startsWith("/profile") ? "scale-110" : "scale-100"}`}>
-                  <FiUser size={24} />
+                  <FiUser size={20} />
                   {pathname.startsWith("/profile") && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
                   )}
